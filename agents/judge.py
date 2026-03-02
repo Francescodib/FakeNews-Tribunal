@@ -33,7 +33,12 @@ If more rounds are needed:
 }
 
 Judgment criteria:
-- Source credibility and recency
+- Source credibility and recency. Each source in the transcript carries a credibility_tier tag:
+    high   = authoritative institution, major verified outlet, peer-reviewed journal
+    medium = established media with editorial standards
+    low    = known for misinformation or strong partisan bias
+    unknown = unclassified (treat neutrally)
+  Weight high-tier sources more heavily; treat low-tier claims with extra skepticism.
 - Consistency across independent sources
 - Quality of Devil's Advocate challenges
 - Whether core factual claims are verifiable

@@ -19,6 +19,8 @@ class Source(BaseModel):
     snippet: str
     domain: str
     retrieved_at: str
+    credibility_tier: str | None = None
+    credibility_score: float | None = None
     credibility_note: str | None = None
 
 
@@ -100,3 +102,26 @@ class RefreshRequest(BaseModel):
 
 class LogoutRequest(BaseModel):
     refresh_token: str
+
+
+# --- Admin ---
+
+class AdminUserResponse(BaseModel):
+    id: UUID
+    email: str
+    is_admin: bool
+    created_at: datetime
+
+
+class AdminUserListResponse(BaseModel):
+    items: list[AdminUserResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class AdminStatsResponse(BaseModel):
+    total_users: int
+    total_analyses: int
+    analyses_by_status: dict[str, int]
+    analyses_by_provider: dict[str, int]

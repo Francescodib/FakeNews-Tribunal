@@ -86,10 +86,21 @@ class DebateOrchestrator:
                 "judge_continuation_reason": None,
             }
 
+            def _fmt_sources(sources: list[dict]) -> str:
+                if not sources:
+                    return "  (none)"
+                lines = []
+                for s in sources:
+                    tier = s.get("credibility_tier", "unknown")
+                    lines.append(f"  - [{tier}] {s.get('url', '')} — {s.get('title', '')}")
+                return "\n".join(lines)
+
             debate_transcript += (
                 f"\n\n--- Round {round_number} ---\n"
-                f"### Researcher\n{researcher_report}\n\n"
-                f"### Devil's Advocate\n{advocate_challenge}"
+                f"### Researcher\n{researcher_report}\n"
+                f"**Researcher sources:**\n{_fmt_sources(researcher_sources)}\n\n"
+                f"### Devil's Advocate\n{advocate_challenge}\n"
+                f"**Advocate sources:**\n{_fmt_sources(advocate_sources)}"
             )
 
             # Judge evaluation

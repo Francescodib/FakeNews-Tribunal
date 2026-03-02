@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Analysis, RefreshToken, User
@@ -127,3 +127,44 @@ async def update_analysis_error(db: AsyncSession, analysis: Analysis, error: str
 async def delete_analysis(db: AsyncSession, analysis: Analysis) -> None:
     await db.delete(analysis)
     await db.commit()
+
+
+# --- Admin ---
+
+async def list_users(
+    db: AsyncSession, page: int = 1, page_size: int = 50
+) -> tuple[list[User], int]:
+    offset = (page - 1) * page_size
+    total_result = await db.execute(select(func.count()).select_from(User))
+    total = total_result.scalar_one()
+    result = await db.execute(
+        select(User).order_by(User.created_at.desc()).limit(page_size).offset(offset)
+    )
+    return list(result.scalars().all()), total
+
+
+async def delete_user(db: AsyncSession, user: User) -> None:
+    await db.delete(user)
+    await db.commit()
+
+
+async def get_global_stats(db: AsyncSession) -> dict:
+    total_users = (await db.execute(select(func.count()).select_from(User))).scalar_one()
+    total_analyses = (await db.execute(select(func.count()).select_from(Analysis))).scalar_one()
+
+    status_rows = await db.execute(
+        select(Analysis.status, func.count()).group_by(Analysis.status)
+    )
+    by_status = {row[0]: row[1] for row in status_rows}
+
+    provider_rows = await db.execute(
+        select(Analysis.llm_provider, func.count()).group_by(Analysis.llm_provider)
+    )
+    by_provider = {row[0]: row[1] for row in provider_rows}
+
+    return {
+        "total_users": total_users,
+        "total_analyses": total_analyses,
+        "analyses_by_status": by_status,
+        "analyses_by_provider": by_provider,
+    }

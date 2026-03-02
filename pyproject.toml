@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "fakenews-tribunal"
-version = "0.1.0"
+version = "0.3.0"
 description = "Autonomous multi-agent fact-checking system"
 readme = "README.md"
 license = { text = "MIT" }
@@ -24,6 +24,7 @@ dependencies = [
     "typer>=0.24.1",
     "httpx>=0.28.1",
     "slowapi>=0.1.9",
+    "fpdf2>=2.8.7",
 ]
 
 [project.scripts]

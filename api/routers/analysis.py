@@ -2,7 +2,7 @@ import asyncio
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.orchestrator import DebateOrchestrator
@@ -19,6 +19,7 @@ from api.models.schemas import (
 )
 from core.config import settings
 from core.events import create_queue, drop_queue, format_sse, get_queue, is_done_sentinel, push_done
+from core.pdf import generate_verdict_pdf_async
 from api.rate_limit import limiter
 from core.logging import get_logger
 from db.models import Analysis, User
@@ -148,6 +149,36 @@ async def list_analyses(
         total=total,
         page=page,
         page_size=page_size,
+    )
+
+
+@router.get("/{analysis_id}/export")
+async def export_analysis_pdf(
+    analysis_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Export the completed analysis verdict as a PDF report."""
+    analysis = await get_analysis(db, analysis_id)
+    if not analysis or analysis.user_id != current_user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Analysis not found")
+    if analysis.status != "completed" or not analysis.verdict_json:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="Analysis not yet completed")
+
+    pdf_bytes = await generate_verdict_pdf_async(
+        claim=analysis.claim,
+        verdict=analysis.verdict_json,
+        rounds=analysis.debate_json or [],
+        analysis_id=str(analysis.id),
+        created_at=analysis.created_at.isoformat(),
+        llm_provider=analysis.llm_provider,
+        llm_model=analysis.llm_model,
+    )
+    filename = f"verdict_{analysis_id}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
@@ -313,4 +344,7 @@ def _src(s: dict) -> Source:
         snippet=s.get("snippet", ""),
         domain=s.get("domain", ""),
         retrieved_at=s.get("retrieved_at", ""),
+        credibility_tier=s.get("credibility_tier"),
+        credibility_score=s.get("credibility_score"),
+        credibility_note=s.get("credibility_note"),
     )

@@ -4,6 +4,7 @@ from tavily import AsyncTavilyClient
 
 from core.config import settings
 from core.logging import get_logger
+from tools.credibility import score_domain
 
 logger = get_logger(__name__)
 
@@ -28,16 +29,21 @@ class SearchTool:
             )
             results = response.get("results", [])
             logger.info("search.done", query=query, result_count=len(results))
-            return [
-                {
+            sources = []
+            for r in results:
+                domain = _extract_domain(r.get("url", ""))
+                tier, score, note = score_domain(domain)
+                sources.append({
                     "url": r.get("url", ""),
                     "title": r.get("title", ""),
                     "snippet": r.get("content", ""),
-                    "domain": _extract_domain(r.get("url", "")),
+                    "domain": domain,
                     "retrieved_at": datetime.now(timezone.utc).isoformat(),
-                }
-                for r in results
-            ]
+                    "credibility_tier": tier,
+                    "credibility_score": score,
+                    "credibility_note": note,
+                })
+            return sources
         except Exception as exc:
             logger.error("search.error", query=query, error=str(exc))
             return []

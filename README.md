@@ -13,7 +13,7 @@
 
 A user submits a claim or news headline. A jury of three specialized AI agents debates it across iterative rounds and returns a structured verdict — with a confidence score, source citations, and full reasoning transparency.
 
-**Current release:** v0.2 — SSE streaming, rate limiting, CLI server mode. Web UI in active development.
+**Current release:** v0.3 — Source credibility scoring, PDF export, admin endpoints. Web UI in active development.
 
 ---
 
@@ -193,8 +193,13 @@ Override the model per-request with `--model <model-name>` (CLI) or `"llm_model"
 | `POST` | `/api/v1/analysis` | Submit claim → 202 Accepted (10/hour rate limit) |
 | `GET` | `/api/v1/analysis/{id}` | Poll result |
 | `GET` | `/api/v1/analysis/{id}/stream` | Stream debate progress via SSE |
+| `GET` | `/api/v1/analysis/{id}/export` | Download verdict as PDF |
 | `GET` | `/api/v1/analysis` | History (paginated) |
 | `DELETE` | `/api/v1/analysis/{id}` | Delete analysis |
+| `GET` | `/api/v1/admin/users` | List all users (admin only) |
+| `GET` | `/api/v1/admin/users/{id}` | User detail (admin only) |
+| `DELETE` | `/api/v1/admin/users/{id}` | Delete user (admin only) |
+| `GET` | `/api/v1/admin/stats` | Global usage stats (admin only) |
 | `GET` | `/api/v1/health` | Health check |
 
 ---
@@ -222,16 +227,16 @@ RUN_INTEGRATION=1 PYTHONPATH=. pytest tests/integration/ -v
 - [x] CLI local mode
 - [x] Docker Compose setup
 
-### v0.2 — Streaming & Polish *(current)*
+### v0.2 — Streaming & Polish
 - [x] SSE streaming endpoint (`GET /api/v1/analysis/{id}/stream`)
 - [x] CLI server mode (`tribunal login` + `tribunal check --server URL`)
 - [x] Per-user rate limiting (10 analyses/hour, slowapi)
-- [ ] Admin endpoints (user management, usage stats)
+- [x] Admin endpoints (user management, usage stats)
 
-### v0.3 — Web UI & Export
-- [ ] Web UI (React / SvelteKit — separate repo)
-- [ ] PDF verdict export
-- [ ] Source credibility scoring
+### v0.3 — Export & Credibility *(current)*
+- [x] Source credibility scoring (domain-tier system, propagated to Judge)
+- [x] PDF verdict export (`GET /api/v1/analysis/{id}/export`, fpdf2)
+- [ ] Web UI (React / Next.js — separate repo)
 
 ### Future
 - [ ] Webhook support on verdict completion
