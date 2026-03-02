@@ -9,10 +9,10 @@ export default function DebateRoundCard({ round }: { round: DebateRound }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+    <div className="rounded-2xl bg-white shadow-sm overflow-hidden">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-50 transition-colors"
+        className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-slate-50 transition-colors"
       >
         <span className="font-medium text-slate-800">Round {round.round_number}</span>
         <span className="text-slate-400">
@@ -21,9 +21,9 @@ export default function DebateRoundCard({ round }: { round: DebateRound }) {
       </button>
 
       {open && (
-        <div className="border-t border-slate-100 divide-y divide-slate-100">
+        <div className="divide-y divide-slate-100">
           {/* Researcher */}
-          <div className="p-4">
+          <div className="px-5 py-4">
             <h4 className="text-xs font-semibold uppercase tracking-wide text-blue-600 mb-2">
               Researcher
             </h4>
@@ -40,7 +40,7 @@ export default function DebateRoundCard({ round }: { round: DebateRound }) {
           </div>
 
           {/* Devil's Advocate */}
-          <div className="p-4">
+          <div className="px-5 py-4">
             <h4 className="text-xs font-semibold uppercase tracking-wide text-red-500 mb-2">
               Devil&apos;s Advocate
             </h4>
@@ -58,7 +58,7 @@ export default function DebateRoundCard({ round }: { round: DebateRound }) {
 
           {/* Judge continuation */}
           {round.judge_continuation_reason && (
-            <div className="p-4 bg-amber-50">
+            <div className="px-5 py-4 bg-amber-50">
               <h4 className="text-xs font-semibold uppercase tracking-wide text-amber-700 mb-1">
                 Judge → Continue
               </h4>

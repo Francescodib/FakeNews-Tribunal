@@ -5,12 +5,8 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Download, Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import {
-  getAnalysis,
-  getAccessToken,
-  streamAnalysisEvents,
-  type Analysis,
-  type DebateRound,
-  type Verdict,
+  getAnalysis, getAccessToken, streamAnalysisEvents,
+  type Analysis, type DebateRound, type Verdict,
 } from "@/lib/api";
 import Navbar from "@/components/Navbar";
 import VerdictBadge from "@/components/VerdictBadge";
@@ -19,18 +15,9 @@ import SourceCard from "@/components/SourceCard";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-// SSE event log entry for live display
-interface StreamEvent {
-  event: string;
-  label: string;
-  detail?: string;
-}
+interface StreamEvent { event: string; label: string; detail?: string; }
 
-export default function AnalysisPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default function AnalysisPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
@@ -54,13 +41,7 @@ export default function AnalysisPage({
   async function loadAnalysis() {
     const a = await getAnalysis(id);
     setAnalysis(a);
-
-    if (a.status === "completed" || a.status === "failed") {
-      setDone(true);
-      return;
-    }
-
-    // Start SSE stream
+    if (a.status === "completed" || a.status === "failed") { setDone(true); return; }
     startStream(id);
   }
 
@@ -68,48 +49,38 @@ export default function AnalysisPage({
     setStreaming(true);
     const ctrl = new AbortController();
     abortRef.current = ctrl;
-
     try {
       for await (const { event, data } of streamAnalysisEvents(analysisId, ctrl.signal)) {
         handleSseEvent(event, data as Record<string, unknown>);
-        if (event === "done" || event === "verdict") {
-          break;
-        }
+        if (event === "done" || event === "verdict") break;
       }
-    } catch {
-      // aborted or stream error
-    } finally {
+    } catch { /* aborted */ } finally {
       setStreaming(false);
-      // Reload final analysis from DB
       const final = await getAnalysis(analysisId).catch(() => null);
       if (final) setAnalysis(final);
       setDone(true);
     }
   }
 
-  function addEvent(entry: StreamEvent) {
-    setStreamEvents((prev) => [...prev, entry]);
-  }
+  function addEvent(entry: StreamEvent) { setStreamEvents((prev) => [...prev, entry]); }
 
   function handleSseEvent(event: string, data: Record<string, unknown>) {
     if (event === "round_start") {
       addEvent({ event, label: `Round ${data.round} / ${data.max_rounds}` });
     } else if (event === "agent_start") {
       const labels: Record<string, string> = {
-        researcher: "Researcher thinking…",
-        devil_advocate: "Devil's Advocate thinking…",
-        judge: "Judge evaluating…",
+        researcher: "Researcher thinking…", devil_advocate: "Devil's Advocate thinking…", judge: "Judge evaluating…",
       };
       addEvent({ event, label: labels[data.agent as string] ?? String(data.agent) });
     } else if (event === "researcher_done") {
-      addEvent({ event, label: `Researcher done`, detail: `${(data.sources as unknown[])?.length ?? 0} sources found` });
+      addEvent({ event, label: "Researcher done", detail: `${(data.sources as unknown[])?.length ?? 0} sources` });
     } else if (event === "advocate_done") {
-      addEvent({ event, label: `Devil's Advocate done`, detail: `${(data.sources as unknown[])?.length ?? 0} sources found` });
+      addEvent({ event, label: "Devil's Advocate done", detail: `${(data.sources as unknown[])?.length ?? 0} sources` });
     } else if (event === "judge_continue") {
       addEvent({ event, label: "Judge → another round", detail: String(data.reason ?? "").slice(0, 100) });
     } else if (event === "verdict") {
       const v = data.verdict as Record<string, unknown>;
-      addEvent({ event, label: `Verdict: ${v?.label}`, detail: `Confidence: ${Math.round((v?.confidence as number) * 100)}%` });
+      addEvent({ event, label: `Verdict: ${v?.label}`, detail: `${Math.round((v?.confidence as number) * 100)}% confidence` });
     } else if (event === "error") {
       addEvent({ event, label: `Error: ${data.message}` });
     }
@@ -124,38 +95,30 @@ export default function AnalysisPage({
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = `verdict_${id}.pdf`;
-    a.click();
+    a.href = url; a.download = `verdict_${id}.pdf`; a.click();
     URL.revokeObjectURL(url);
   }
 
   if (isLoading || !analysis) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="animate-spin text-slate-400" />
-      </div>
-    );
+    return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-slate-400" /></div>;
   }
 
   const verdict = analysis.verdict as Verdict | undefined;
   const rounds = analysis.debate as DebateRound[];
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-100">
       <Navbar />
       <main className="mx-auto max-w-5xl px-4 py-8 space-y-6">
 
         {/* Header */}
         <div className="flex items-start gap-3">
-          <button
-            onClick={() => router.push("/dashboard")}
-            className="mt-1 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-          >
+          <button onClick={() => router.push("/dashboard")}
+            className="mt-1 p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-white transition-colors">
             <ArrowLeft size={18} />
           </button>
           <div className="flex-1 min-w-0">
-            <p className="text-sm text-slate-500 mb-1">
+            <p className="text-sm text-slate-400 mb-1">
               {new Date(analysis.created_at).toLocaleString()} · {analysis.llm_provider} · {analysis.llm_model}
             </p>
             <h1 className="text-lg font-semibold text-slate-900 leading-snug">
@@ -163,10 +126,8 @@ export default function AnalysisPage({
             </h1>
           </div>
           {done && verdict && (
-            <button
-              onClick={downloadPdf}
-              className="shrink-0 flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 transition-colors"
-            >
+            <button onClick={downloadPdf}
+              className="shrink-0 flex items-center gap-1.5 rounded-xl bg-white shadow-sm px-3 py-2 text-sm text-slate-600 hover:shadow-md transition-shadow">
               <Download size={15} />
               PDF
             </button>
@@ -175,20 +136,20 @@ export default function AnalysisPage({
 
         {/* Live stream log */}
         {(streaming || streamEvents.length > 0) && !done && (
-          <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 space-y-2">
+          <div className="rounded-2xl bg-blue-50 p-5 space-y-2">
             <div className="flex items-center gap-2 text-sm font-medium text-blue-700 mb-3">
               <Loader2 size={14} className="animate-spin" />
               Analysis in progress…
             </div>
             {streamEvents.map((ev, i) => (
               <div key={i} className="flex items-start gap-2 text-sm">
-                <span className={`mt-0.5 w-2 h-2 rounded-full shrink-0 ${
+                <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${
                   ev.event === "verdict" ? "bg-green-500" :
                   ev.event === "error" ? "bg-red-500" :
                   ev.event === "round_start" ? "bg-blue-500" : "bg-slate-300"
                 }`} />
                 <span className="text-slate-700">{ev.label}</span>
-                {ev.detail && <span className="text-slate-400 text-xs">{ev.detail}</span>}
+                {ev.detail && <span className="text-slate-400 text-xs self-center">{ev.detail}</span>}
               </div>
             ))}
           </div>
@@ -196,7 +157,7 @@ export default function AnalysisPage({
 
         {/* Verdict */}
         {verdict && (
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+          <div className="rounded-2xl bg-white shadow-sm p-6 space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-3">
               <VerdictBadge label={verdict.label} confidence={verdict.confidence} size="lg" />
               <div className="text-xs text-slate-400">
@@ -204,33 +165,26 @@ export default function AnalysisPage({
               </div>
             </div>
             <p className="text-slate-700 leading-relaxed">{verdict.summary}</p>
-            <details className="group">
+            <details>
               <summary className="cursor-pointer text-sm font-medium text-blue-600 hover:underline list-none">
                 Full reasoning ▾
               </summary>
-              <p className="mt-3 text-sm text-slate-600 whitespace-pre-wrap leading-relaxed border-t border-slate-100 pt-3">
+              <p className="mt-3 text-sm text-slate-600 whitespace-pre-wrap leading-relaxed pt-3 border-t border-slate-100">
                 {verdict.reasoning}
               </p>
             </details>
 
-            {/* Supporting sources */}
             {verdict.supporting_sources.length > 0 && (
               <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-green-700 mb-2">
-                  Supporting sources
-                </h3>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-green-700 mb-2">Supporting sources</h3>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {verdict.supporting_sources.map((s, i) => <SourceCard key={i} source={s} />)}
                 </div>
               </div>
             )}
-
-            {/* Contradicting sources */}
             {verdict.contradicting_sources.length > 0 && (
               <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-red-600 mb-2">
-                  Contradicting sources
-                </h3>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-red-600 mb-2">Contradicting sources</h3>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {verdict.contradicting_sources.map((s, i) => <SourceCard key={i} source={s} />)}
                 </div>
@@ -241,7 +195,7 @@ export default function AnalysisPage({
 
         {/* Error */}
         {analysis.status === "failed" && (
-          <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+          <div className="rounded-2xl bg-red-50 px-5 py-4 text-sm text-red-700">
             Analysis failed: {analysis.error ?? "Unknown error"}
           </div>
         )}

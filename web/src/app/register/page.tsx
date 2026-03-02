@@ -7,6 +7,8 @@ import { Scale } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api";
 
+const inputCls = "w-full rounded-xl bg-slate-100 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors";
+
 export default function RegisterPage() {
   const { register } = useAuth();
   const router = useRouter();
@@ -30,7 +32,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <div className="mb-3 flex justify-center">
@@ -40,47 +42,29 @@ export default function RegisterPage() {
           <p className="mt-1 text-sm text-slate-500">Start fact-checking in seconds</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+        <form onSubmit={handleSubmit} className="rounded-2xl bg-white shadow-sm p-6 space-y-4">
           {error && (
-            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+            <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
           )}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="you@example.com"
-            />
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Email</label>
+            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+              className={inputCls} placeholder="you@example.com" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
-            <input
-              type="password"
-              required
-              minLength={8}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Min 8 characters"
-            />
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Password</label>
+            <input type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)}
+              className={inputCls} placeholder="Min 8 characters" />
           </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
-          >
+          <button type="submit" disabled={loading}
+            className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors">
             {loading ? "Creating account…" : "Create account"}
           </button>
         </form>
 
         <p className="mt-4 text-center text-sm text-slate-500">
           Already have an account?{" "}
-          <Link href="/login" className="font-medium text-blue-600 hover:underline">
-            Sign in
-          </Link>
+          <Link href="/login" className="font-medium text-blue-600 hover:underline">Sign in</Link>
         </p>
       </div>
     </div>

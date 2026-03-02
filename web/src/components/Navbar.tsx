@@ -15,7 +15,7 @@ export default function Navbar() {
   }
 
   return (
-    <header className="border-b border-slate-200 bg-white">
+    <header className="bg-white shadow-sm">
       <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
         <Link href="/dashboard" className="flex items-center gap-2 font-bold text-slate-900">
           <Scale size={20} className="text-blue-600" />
