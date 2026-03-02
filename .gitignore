@@ -58,3 +58,9 @@ Thumbs.db
 
 # Docker volumes (local overrides)
 docker-compose.override.yml
+
+# Web UI (Next.js)
+web/node_modules/
+web/.next/
+web/out/
+web/.env.local

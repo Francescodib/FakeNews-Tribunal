@@ -233,10 +233,10 @@ RUN_INTEGRATION=1 PYTHONPATH=. pytest tests/integration/ -v
 - [x] Per-user rate limiting (10 analyses/hour, slowapi)
 - [x] Admin endpoints (user management, usage stats)
 
-### v0.3 — Export & Credibility *(current)*
+### v0.3 — Export, Credibility & Web UI *(current)*
 - [x] Source credibility scoring (domain-tier system, propagated to Judge)
 - [x] PDF verdict export (`GET /api/v1/analysis/{id}/export`, fpdf2)
-- [ ] Web UI (React / Next.js — separate repo)
+- [x] Web UI (Next.js 16 + React 19 + Tailwind 4, `web/` subfolder)
 
 ### Future
 - [ ] Webhook support on verdict completion
