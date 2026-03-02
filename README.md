@@ -4,6 +4,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.135-009688?logo=fastapi&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
 ![LiteLLM](https://img.shields.io/badge/LiteLLM-multi--provider-6C63FF)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
@@ -13,7 +14,7 @@
 
 A user submits a claim or news headline. A jury of three specialized AI agents debates it across iterative rounds and returns a structured verdict — with a confidence score, source citations, and full reasoning transparency.
 
-**Current release:** v0.3 — Source credibility scoring, PDF export, admin endpoints. Web UI in active development.
+**Current release:** v0.3 — Source credibility scoring, PDF export, Web UI.
 
 ---
 
@@ -50,9 +51,13 @@ Each round the Judge evaluates whether the evidence is sufficient. If not, the R
 | Agent orchestration | Custom (no framework) |
 | LLM abstraction | LiteLLM — Anthropic, OpenAI, Gemini, Ollama |
 | Web search | Tavily |
+| Source credibility | Domain-tier scoring (80+ domains, high/medium/low) |
 | Database | PostgreSQL 16 + SQLAlchemy async + Alembic |
-| Auth | JWT access tokens + bcrypt refresh tokens |
+| Auth | JWT access tokens + bcrypt + refresh token rotation |
+| PDF export | fpdf2 (pure Python, no native dependencies) |
+| Rate limiting | slowapi (10 analyses/hour per user) |
 | CLI | Typer |
+| Web UI | Next.js 16 + React 19 + Tailwind CSS 4 |
 | Logging | structlog (JSON in prod, colored in dev) |
 | Containerization | Docker Compose |
 
@@ -63,10 +68,11 @@ Each round the Judge evaluates whether the evidence is sufficient. If not, the R
 ### Prerequisites
 
 - Python 3.12+
+- Node.js 20+ (for the web UI)
 - Docker (for PostgreSQL)
 - At least one LLM provider key — or a local [Ollama](https://ollama.com) instance
 
-### 1. Clone and set up the environment
+### 1. Clone and set up the Python environment
 
 ```bash
 git clone https://github.com/your-username/fakenews-tribunal.git
@@ -88,18 +94,19 @@ cp .env.example .env
 # Edit .env and fill in your API keys
 ```
 
-Minimum required keys:
+Key variables:
 
-| Key | Required for |
+| Variable | Description |
 |---|---|
 | `ANTHROPIC_API_KEY` | Anthropic Claude models |
 | `OPENAI_API_KEY` | OpenAI GPT models |
 | `GEMINI_API_KEY` | Google Gemini models |
 | `OLLAMA_BASE_URL` | Local Ollama (default: `http://localhost:11434`) |
-| `TAVILY_API_KEY` | Web search (all providers) |
-| `JWT_SECRET_KEY` | API auth — change in production |
+| `TAVILY_API_KEY` | Web search — required for all providers |
+| `JWT_SECRET_KEY` | Auth secret — change in production |
+| `CORS_ORIGINS` | Allowed origins for the web UI (default: `["http://localhost:3000"]`) |
 
-> You only need the key for the provider you intend to use. Tavily is always required.
+> You only need the key for the provider you intend to use. `TAVILY_API_KEY` is always required.
 
 ### 3. Start the database and run migrations
 
@@ -108,39 +115,7 @@ docker compose up db -d
 PYTHONPATH=. alembic upgrade head
 ```
 
-### 4a. CLI mode (no server needed)
-
-```bash
-# Fact-check a claim directly (local, no server required)
-tribunal check "La Grande Muraglia cinese è visibile dalla Luna"
-
-# Choose provider and model
-tribunal check "Vaccines cause autism" --provider openai --model gpt-4o
-
-# Use a local Ollama model
-tribunal check "The Earth is flat" --provider ollama --model mistral-small --rounds 3
-
-# Output as JSON
-tribunal check "..." --output json
-```
-
-### 4b. CLI server mode (calls REST API)
-
-```bash
-# Register and log in
-tribunal login --server http://localhost:8000 --register
-
-# Re-use stored credentials for subsequent calls
-tribunal check "La Terra è piatta" --server http://localhost:8000 --provider anthropic
-
-# --server can be omitted after login (URL is stored in ~/.tribunal/config.json)
-tribunal check "Vaccines cause autism"
-
-# Log out (invalidates refresh token server-side)
-tribunal logout
-```
-
-### 4b. API server mode
+### 4. Start the API server
 
 ```bash
 PYTHONPATH=. uvicorn api.main:app --reload
@@ -148,7 +123,102 @@ PYTHONPATH=. uvicorn api.main:app --reload
 
 API docs available at `http://localhost:8000/docs`.
 
-#### Quick API walkthrough
+### 5. Start the Web UI
+
+```bash
+cd web
+cp .env.local.example .env.local   # set NEXT_PUBLIC_API_URL if needed
+npm install
+npm run dev
+```
+
+Web UI available at `http://localhost:3000`.
+
+---
+
+## Web UI
+
+The web interface is a Next.js 16 app located in the `web/` subfolder. It provides:
+
+- **Authentication** — register, login, logout with JWT token management
+- **Dashboard** — submit claims, configure provider/model/language/rounds, browse history
+- **Ollama model browser** — when Ollama is selected as provider, available models are fetched live from the local instance
+- **Live analysis view** — real-time SSE stream showing each agent's progress as it runs
+- **Verdict display** — label, confidence, summary, full reasoning, supporting and contradicting sources with credibility tiers
+- **Debate transcript** — collapsible round-by-round view of Researcher, Devil's Advocate, and Judge output
+- **PDF export** — one-click download of the full verdict report
+- **Resilient streaming** — if the server restarts mid-analysis, the stuck analysis is automatically marked as failed with a clear error message
+
+---
+
+## CLI
+
+### Local mode (no server required)
+
+```bash
+# Fact-check a claim directly
+tribunal check "La Grande Muraglia cinese è visibile dalla Luna"
+
+# Choose provider and model
+tribunal check "Vaccines cause autism" --provider openai --model gpt-4o
+
+# Use a local Ollama model
+tribunal check "The Earth is flat" --provider ollama --model ollama/mistral --rounds 3
+
+# Output as JSON
+tribunal check "..." --output json
+```
+
+### Server mode (calls REST API)
+
+```bash
+# Register and log in
+tribunal login --server http://localhost:8000 --register
+
+# Submit via server (URL stored in ~/.tribunal/config.json after login)
+tribunal check "La Terra è piatta" --provider anthropic
+
+# Log out (invalidates refresh token server-side)
+tribunal logout
+```
+
+---
+
+## LLM Providers
+
+| Provider | Default model | Env var |
+|---|---|---|
+| `anthropic` | `claude-sonnet-4-6` | `ANTHROPIC_API_KEY` |
+| `openai` | `gpt-4o` | `OPENAI_API_KEY` |
+| `gemini` | `gemini/gemini-2.0-flash` | `GEMINI_API_KEY` |
+| `ollama` | `ollama/llama3.2` | `OLLAMA_BASE_URL` |
+
+Override the model per-request with `--model <model-name>` (CLI), `"llm_model"` field (API), or via the model selector in the web UI. For Ollama, the web UI fetches the list of locally available models automatically.
+
+---
+
+## API Reference
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/v1/auth/register` | Create account |
+| `POST` | `/api/v1/auth/login` | Get tokens |
+| `POST` | `/api/v1/auth/refresh` | Rotate refresh token |
+| `POST` | `/api/v1/auth/logout` | Invalidate refresh token |
+| `POST` | `/api/v1/analysis` | Submit claim → 202 Accepted (10/hour per user) |
+| `GET` | `/api/v1/analysis/{id}` | Poll result |
+| `GET` | `/api/v1/analysis/{id}/stream` | Stream debate progress via SSE |
+| `GET` | `/api/v1/analysis/{id}/export` | Download verdict as PDF |
+| `GET` | `/api/v1/analysis` | History (paginated) |
+| `DELETE` | `/api/v1/analysis/{id}` | Delete analysis |
+| `GET` | `/api/v1/providers/ollama/models` | List available Ollama models |
+| `GET` | `/api/v1/admin/users` | List all users (admin only) |
+| `GET` | `/api/v1/admin/users/{id}` | User detail (admin only) |
+| `DELETE` | `/api/v1/admin/users/{id}` | Delete user (admin only) |
+| `GET` | `/api/v1/admin/stats` | Global usage stats (admin only) |
+| `GET` | `/api/v1/health` | Health check |
+
+### Quick curl walkthrough
 
 ```bash
 # Register
@@ -165,42 +235,12 @@ curl -X POST http://localhost:8000/api/v1/analysis \
 # Poll for the result
 curl http://localhost:8000/api/v1/analysis/<analysis_id> \
   -H "Authorization: Bearer <access_token>"
+
+# Export PDF
+curl http://localhost:8000/api/v1/analysis/<analysis_id>/export \
+  -H "Authorization: Bearer <access_token>" \
+  --output verdict.pdf
 ```
-
----
-
-## LLM Providers
-
-| Provider | Default model | Env var |
-|---|---|---|
-| `anthropic` | `claude-sonnet-4-6` | `ANTHROPIC_API_KEY` |
-| `openai` | `gpt-4o` | `OPENAI_API_KEY` |
-| `gemini` | `gemini/gemini-2.0-flash` | `GEMINI_API_KEY` |
-| `ollama` | `ollama/llama3.2` | `OLLAMA_BASE_URL` |
-
-Override the model per-request with `--model <model-name>` (CLI) or `"llm_model"` (API).
-
----
-
-## API Reference
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/api/v1/auth/register` | Create account |
-| `POST` | `/api/v1/auth/login` | Get tokens |
-| `POST` | `/api/v1/auth/refresh` | Rotate refresh token |
-| `POST` | `/api/v1/auth/logout` | Invalidate refresh token |
-| `POST` | `/api/v1/analysis` | Submit claim → 202 Accepted (10/hour rate limit) |
-| `GET` | `/api/v1/analysis/{id}` | Poll result |
-| `GET` | `/api/v1/analysis/{id}/stream` | Stream debate progress via SSE |
-| `GET` | `/api/v1/analysis/{id}/export` | Download verdict as PDF |
-| `GET` | `/api/v1/analysis` | History (paginated) |
-| `DELETE` | `/api/v1/analysis/{id}` | Delete analysis |
-| `GET` | `/api/v1/admin/users` | List all users (admin only) |
-| `GET` | `/api/v1/admin/users/{id}` | User detail (admin only) |
-| `DELETE` | `/api/v1/admin/users/{id}` | Delete user (admin only) |
-| `GET` | `/api/v1/admin/stats` | Global usage stats (admin only) |
-| `GET` | `/api/v1/health` | Health check |
 
 ---
 
@@ -218,25 +258,28 @@ RUN_INTEGRATION=1 PYTHONPATH=. pytest tests/integration/ -v
 
 ## Roadmap
 
-### v0.1 — Core *(current)*
+### v0.1 — Core ✓
 - [x] Multi-agent debate loop (Researcher, Devil's Advocate, Judge)
-- [x] LiteLLM multi-provider support
+- [x] LiteLLM multi-provider support (Anthropic, OpenAI, Gemini, Ollama)
 - [x] Tavily web search integration
 - [x] FastAPI REST API with JWT auth
 - [x] PostgreSQL persistence + Alembic migrations
 - [x] CLI local mode
 - [x] Docker Compose setup
 
-### v0.2 — Streaming & Polish
+### v0.2 — Streaming & Operations ✓
 - [x] SSE streaming endpoint (`GET /api/v1/analysis/{id}/stream`)
 - [x] CLI server mode (`tribunal login` + `tribunal check --server URL`)
 - [x] Per-user rate limiting (10 analyses/hour, slowapi)
 - [x] Admin endpoints (user management, usage stats)
 
-### v0.3 — Export, Credibility & Web UI *(current)*
-- [x] Source credibility scoring (domain-tier system, propagated to Judge)
-- [x] PDF verdict export (`GET /api/v1/analysis/{id}/export`, fpdf2)
-- [x] Web UI (Next.js 16 + React 19 + Tailwind 4, `web/` subfolder)
+### v0.3 — Credibility, Export & Web UI ✓
+- [x] Source credibility scoring (domain-tier system, propagated to Judge prompt)
+- [x] PDF verdict export (fpdf2, pure Python)
+- [x] Web UI (Next.js 16 + React 19 + Tailwind 4, dark theme)
+- [x] Ollama model browser in web UI (live fetch from local instance)
+- [x] CORS configuration via `CORS_ORIGINS` env var
+- [x] Resilient SSE — stuck analyses auto-recovered on server restart
 
 ### Future
 - [ ] Webhook support on verdict completion
