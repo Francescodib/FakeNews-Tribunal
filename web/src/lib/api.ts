@@ -31,8 +31,13 @@ export function getRefreshToken(): string | null {
 async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
-  withAuth = true
+  withAuth = true,
+  timeoutMs = 45_000
 ): Promise<T> {
+  const ctrl = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, timeoutMs);
+
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
@@ -43,15 +48,31 @@ async function apiFetch<T>(
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API}${path}`, { ...options, headers });
+  try {
+    const res = await fetch(`${API}${path}`, {
+      ...options,
+      headers,
+      signal: options.signal ?? ctrl.signal,
+    });
+    clearTimeout(timer);
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new ApiError(res.status, err.detail ?? "Unknown error");
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new ApiError(res.status, err.detail ?? "Unknown error");
+    }
+
+    if (res.status === 204) return undefined as T;
+    return res.json();
+  } catch (err) {
+    clearTimeout(timer);
+    if (err instanceof ApiError) throw err;
+    if (err instanceof DOMException && err.name === "AbortError") {
+      if (timedOut) throw new ApiError(0, "timeout");
+      throw err;
+    }
+    // Network error (server down, CORS, DNS, etc.)
+    throw new ApiError(0, "network");
   }
-
-  if (res.status === 204) return undefined as T;
-  return res.json();
 }
 
 export class ApiError extends Error {
@@ -172,6 +193,15 @@ export async function listAnalyses(page = 1, page_size = 20) {
 
 export async function deleteAnalysis(id: string) {
   return apiFetch<void>(`/api/v1/analysis/${id}`, { method: "DELETE" });
+}
+
+// ---------------------------------------------------------------------------
+// Providers
+// ---------------------------------------------------------------------------
+
+export async function getOllamaModels(): Promise<string[]> {
+  const data = await apiFetch<{ models: string[] }>("/api/v1/providers/ollama/models");
+  return data.models;
 }
 
 export function getExportUrl(id: string) {

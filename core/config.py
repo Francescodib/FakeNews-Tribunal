@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # Debate
     MAX_DEBATE_ROUNDS: int = 5
 
+    # CORS
+    CORS_ORIGINS: list[str] = ["http://localhost:3000"]
+
     # Server
     HOST: str = "0.0.0.0"
     PORT: int = 8000

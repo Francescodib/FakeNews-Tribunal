@@ -15,17 +15,17 @@ export default function Navbar() {
   }
 
   return (
-    <header className="bg-white shadow-sm">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-        <Link href="/dashboard" className="flex items-center gap-2 font-bold text-slate-900">
-          <Scale size={20} className="text-blue-600" />
+    <header className="border-b border-white/10 bg-[#0c0c0c]">
+      <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3.5">
+        <Link href="/dashboard" className="flex items-center gap-2 font-semibold text-white">
+          <Scale size={18} className="text-[#3ecf8e]" />
           FakeNews Tribunal
         </Link>
         <button
           onClick={handleLogout}
-          className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 transition-colors"
+          className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
         >
-          <LogOut size={15} />
+          <LogOut size={14} />
           Logout
         </button>
       </div>

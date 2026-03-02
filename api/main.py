@@ -6,7 +6,8 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from api.rate_limit import limiter
-from api.routers import admin, analysis, auth
+from api.routers import admin, analysis, auth, providers
+from core.config import settings
 from core.logging import configure_logging, get_logger
 
 
@@ -29,8 +30,8 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -38,6 +39,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(analysis.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
+app.include_router(providers.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health", tags=["health"])

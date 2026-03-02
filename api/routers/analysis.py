@@ -115,7 +115,13 @@ async def stream_analysis(
 
     q = get_queue(analysis_id)
     if q is None:
-        raise HTTPException(status.HTTP_409_CONFLICT, detail="Stream not available for this analysis")
+        # Queue is gone — server was restarted while this analysis was running.
+        # Mark it as failed so the client can show a proper error instead of a 409.
+        await update_analysis_error(db, analysis, "Analysis interrupted by server restart")
+        async def _stale():
+            yield format_sse("error", {"message": "Analysis was interrupted (server restarted). Please resubmit."})
+            yield format_sse("done", {})
+        return StreamingResponse(_stale(), media_type="text/event-stream")
 
     return StreamingResponse(
         _stream_queue(q, analysis_id),

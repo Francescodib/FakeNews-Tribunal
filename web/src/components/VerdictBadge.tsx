@@ -3,11 +3,11 @@ import { clsx } from "clsx";
 type Label = "TRUE" | "FALSE" | "MISLEADING" | "PARTIALLY_TRUE" | "UNVERIFIABLE";
 
 const CONFIG: Record<Label, { label: string; emoji: string; classes: string }> = {
-  TRUE:           { label: "TRUE",           emoji: "✅", classes: "bg-green-100 text-green-800" },
-  FALSE:          { label: "FALSE",          emoji: "❌", classes: "bg-red-100 text-red-800" },
-  MISLEADING:     { label: "MISLEADING",     emoji: "⚠️", classes: "bg-amber-100 text-amber-800" },
-  PARTIALLY_TRUE: { label: "PARTIALLY TRUE", emoji: "🔶", classes: "bg-orange-100 text-orange-800" },
-  UNVERIFIABLE:   { label: "UNVERIFIABLE",   emoji: "❓", classes: "bg-slate-100 text-slate-700" },
+  TRUE:           { label: "TRUE",           emoji: "✅", classes: "bg-[#3ecf8e]/15 text-[#3ecf8e] border border-[#3ecf8e]/30" },
+  FALSE:          { label: "FALSE",          emoji: "❌", classes: "bg-red-500/15 text-red-400 border border-red-500/30" },
+  MISLEADING:     { label: "MISLEADING",     emoji: "⚠️", classes: "bg-amber-500/15 text-amber-400 border border-amber-500/30" },
+  PARTIALLY_TRUE: { label: "PARTIALLY TRUE", emoji: "🔶", classes: "bg-orange-500/15 text-orange-400 border border-orange-500/30" },
+  UNVERIFIABLE:   { label: "UNVERIFIABLE",   emoji: "❓", classes: "bg-white/10 text-zinc-400 border border-white/15" },
 };
 
 export default function VerdictBadge({

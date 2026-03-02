@@ -3,68 +3,131 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Scale } from "lucide-react";
+import { AlertCircle, Scale, WifiOff } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api";
 
-const inputCls = "w-full rounded-xl bg-slate-100 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors";
+const inputCls = "w-full rounded-xl bg-[#1a1a1a] border border-white/10 px-4 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-[#3ecf8e]/50 focus:border-[#3ecf8e]/50 transition-colors";
+
+type ErrorKind = "auth" | "server" | "network";
+
+interface FormError {
+  kind: ErrorKind;
+  message: string;
+}
+
+function classifyError(err: unknown): FormError {
+  if (err instanceof ApiError) {
+    switch (err.status) {
+      case 0:
+        return err.message === "timeout"
+          ? { kind: "network", message: "Request timed out — is the server running?" }
+          : { kind: "network", message: "Cannot reach the server — is it running?" };
+      case 401:
+        return { kind: "auth", message: "Incorrect email or password" };
+      case 422:
+        return { kind: "auth", message: "Invalid email or password format" };
+      case 429:
+        return { kind: "server", message: "Too many login attempts — wait a few minutes" };
+      case 500:
+      case 502:
+      case 503:
+        return { kind: "server", message: "Server error — try again later" };
+      default:
+        return { kind: "auth", message: err.message };
+    }
+  }
+  return { kind: "network", message: "Unexpected error — try again" };
+}
+
+const ERROR_STYLE: Record<ErrorKind, string> = {
+  auth:    "bg-red-500/10 border-red-500/25 text-red-400",
+  server:  "bg-amber-500/10 border-amber-500/25 text-amber-400",
+  network: "bg-amber-500/10 border-amber-500/25 text-amber-400",
+};
+
+const ERROR_ICON: Record<ErrorKind, React.ReactNode> = {
+  auth:    <AlertCircle size={14} className="shrink-0 mt-0.5" />,
+  server:  <AlertCircle size={14} className="shrink-0 mt-0.5" />,
+  network: <WifiOff size={14} className="shrink-0 mt-0.5" />,
+};
 
 export default function LoginPage() {
   const { login } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState<FormError | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
+    setError(null);
     setLoading(true);
     try {
       await login(email, password);
       router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Login failed");
+      setError(classifyError(err));
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-[#0c0c0c] px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <div className="mb-3 flex justify-center">
-            <Scale size={32} className="text-blue-600" />
+            <Scale size={32} className="text-[#3ecf8e]" />
           </div>
-          <h1 className="text-2xl font-bold text-slate-900">FakeNews Tribunal</h1>
-          <p className="mt-1 text-sm text-slate-500">Sign in to your account</p>
+          <h1 className="text-2xl font-bold text-white">FakeNews Tribunal</h1>
+          <p className="mt-1 text-sm text-zinc-500">Sign in to your account</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="rounded-2xl bg-white shadow-sm p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="rounded-xl bg-[#1a1a1a] border border-white/10 p-6 space-y-4">
           {error && (
-            <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+            <div className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 text-sm ${ERROR_STYLE[error.kind]}`}>
+              {ERROR_ICON[error.kind]}
+              <span>{error.message}</span>
+            </div>
           )}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Email</label>
-            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-              className={inputCls} placeholder="you@example.com" />
+            <label className="block text-sm font-medium text-zinc-300 mb-1.5">Email</label>
+            <input
+              type="email" required value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className={inputCls}
+              placeholder="you@example.com"
+              autoComplete="email"
+            />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Password</label>
-            <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
-              className={inputCls} placeholder="••••••••" />
+            <label className="block text-sm font-medium text-zinc-300 mb-1.5">Password</label>
+            <input
+              type="password" required value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className={inputCls}
+              placeholder="••••••••"
+              autoComplete="current-password"
+            />
           </div>
-          <button type="submit" disabled={loading}
-            className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors">
-            {loading ? "Signing in…" : "Sign in"}
+          <button
+            type="submit" disabled={loading}
+            className="w-full rounded-xl bg-[#3ecf8e] px-4 py-2.5 text-sm font-semibold text-black hover:bg-[#2db37a] disabled:opacity-60 transition-colors"
+          >
+            {loading ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="inline-block w-3.5 h-3.5 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                Signing in…
+              </span>
+            ) : "Sign in"}
           </button>
         </form>
 
-        <p className="mt-4 text-center text-sm text-slate-500">
+        <p className="mt-4 text-center text-sm text-zinc-500">
           No account?{" "}
-          <Link href="/register" className="font-medium text-blue-600 hover:underline">Register</Link>
+          <Link href="/register" className="font-medium text-[#3ecf8e] hover:underline">Register</Link>
         </p>
       </div>
     </div>

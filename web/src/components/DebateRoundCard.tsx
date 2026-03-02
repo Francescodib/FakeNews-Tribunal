@@ -9,25 +9,25 @@ export default function DebateRoundCard({ round }: { round: DebateRound }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="rounded-2xl bg-white shadow-sm overflow-hidden">
+    <div className="rounded-xl bg-[#1a1a1a] border border-white/10 overflow-hidden">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-slate-50 transition-colors"
+        className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-white/5 transition-colors"
       >
-        <span className="font-medium text-slate-800">Round {round.round_number}</span>
-        <span className="text-slate-400">
+        <span className="font-medium text-white">Round {round.round_number}</span>
+        <span className="text-zinc-500">
           {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </span>
       </button>
 
       {open && (
-        <div className="divide-y divide-slate-100">
+        <div className="divide-y divide-white/10">
           {/* Researcher */}
           <div className="px-5 py-4">
-            <h4 className="text-xs font-semibold uppercase tracking-wide text-blue-600 mb-2">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-[#3ecf8e] mb-2">
               Researcher
             </h4>
-            <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+            <p className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">
               {round.researcher_report}
             </p>
             {round.researcher_sources.length > 0 && (
@@ -41,10 +41,10 @@ export default function DebateRoundCard({ round }: { round: DebateRound }) {
 
           {/* Devil's Advocate */}
           <div className="px-5 py-4">
-            <h4 className="text-xs font-semibold uppercase tracking-wide text-red-500 mb-2">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-red-400 mb-2">
               Devil&apos;s Advocate
             </h4>
-            <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+            <p className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">
               {round.advocate_challenge}
             </p>
             {round.advocate_counter_sources.length > 0 && (
@@ -58,11 +58,11 @@ export default function DebateRoundCard({ round }: { round: DebateRound }) {
 
           {/* Judge continuation */}
           {round.judge_continuation_reason && (
-            <div className="px-5 py-4 bg-amber-50">
-              <h4 className="text-xs font-semibold uppercase tracking-wide text-amber-700 mb-1">
+            <div className="px-5 py-4 bg-amber-500/5">
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-amber-400 mb-1">
                 Judge → Continue
               </h4>
-              <p className="text-sm text-amber-800">{round.judge_continuation_reason}</p>
+              <p className="text-sm text-amber-300/80">{round.judge_continuation_reason}</p>
             </div>
           )}
         </div>

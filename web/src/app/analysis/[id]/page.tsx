@@ -100,34 +100,34 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
   }
 
   if (isLoading || !analysis) {
-    return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-slate-400" /></div>;
+    return <div className="min-h-screen bg-[#0c0c0c] flex items-center justify-center"><Loader2 className="animate-spin text-zinc-600" /></div>;
   }
 
   const verdict = analysis.verdict as Verdict | undefined;
   const rounds = analysis.debate as DebateRound[];
 
   return (
-    <div className="min-h-screen bg-slate-100">
+    <div className="min-h-screen bg-[#0c0c0c]">
       <Navbar />
       <main className="mx-auto max-w-5xl px-4 py-8 space-y-6">
 
         {/* Header */}
         <div className="flex items-start gap-3">
           <button onClick={() => router.push("/dashboard")}
-            className="mt-1 p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-white transition-colors">
+            className="mt-1 p-1.5 rounded-xl text-zinc-600 hover:text-white hover:bg-white/10 transition-colors">
             <ArrowLeft size={18} />
           </button>
           <div className="flex-1 min-w-0">
-            <p className="text-sm text-slate-400 mb-1">
+            <p className="text-sm text-zinc-500 mb-1">
               {new Date(analysis.created_at).toLocaleString()} · {analysis.llm_provider} · {analysis.llm_model}
             </p>
-            <h1 className="text-lg font-semibold text-slate-900 leading-snug">
+            <h1 className="text-lg font-semibold text-white leading-snug">
               &ldquo;{analysis.claim}&rdquo;
             </h1>
           </div>
           {done && verdict && (
             <button onClick={downloadPdf}
-              className="shrink-0 flex items-center gap-1.5 rounded-xl bg-white shadow-sm px-3 py-2 text-sm text-slate-600 hover:shadow-md transition-shadow">
+              className="shrink-0 flex items-center gap-1.5 rounded-xl bg-[#1a1a1a] border border-white/10 px-3 py-2 text-sm text-zinc-300 hover:bg-white/10 hover:text-white transition-colors">
               <Download size={15} />
               PDF
             </button>
@@ -136,20 +136,20 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
 
         {/* Live stream log */}
         {(streaming || streamEvents.length > 0) && !done && (
-          <div className="rounded-2xl bg-blue-50 p-5 space-y-2">
-            <div className="flex items-center gap-2 text-sm font-medium text-blue-700 mb-3">
+          <div className="rounded-xl bg-[#1a1a1a] border border-white/10 p-5 space-y-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-[#3ecf8e] mb-3">
               <Loader2 size={14} className="animate-spin" />
               Analysis in progress…
             </div>
             {streamEvents.map((ev, i) => (
               <div key={i} className="flex items-start gap-2 text-sm">
                 <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${
-                  ev.event === "verdict" ? "bg-green-500" :
+                  ev.event === "verdict" ? "bg-[#3ecf8e]" :
                   ev.event === "error" ? "bg-red-500" :
-                  ev.event === "round_start" ? "bg-blue-500" : "bg-slate-300"
+                  ev.event === "round_start" ? "bg-blue-500" : "bg-zinc-600"
                 }`} />
-                <span className="text-slate-700">{ev.label}</span>
-                {ev.detail && <span className="text-slate-400 text-xs self-center">{ev.detail}</span>}
+                <span className="text-zinc-300">{ev.label}</span>
+                {ev.detail && <span className="text-zinc-500 text-xs self-center">{ev.detail}</span>}
               </div>
             ))}
           </div>
@@ -157,26 +157,26 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
 
         {/* Verdict */}
         {verdict && (
-          <div className="rounded-2xl bg-white shadow-sm p-6 space-y-4">
+          <div className="rounded-xl bg-[#1a1a1a] border border-white/10 p-6 space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-3">
               <VerdictBadge label={verdict.label} confidence={verdict.confidence} size="lg" />
-              <div className="text-xs text-slate-400">
+              <div className="text-xs text-zinc-500">
                 {verdict.total_rounds} round{verdict.total_rounds !== 1 ? "s" : ""} · {(verdict.processing_time_ms / 1000).toFixed(1)}s
               </div>
             </div>
-            <p className="text-slate-700 leading-relaxed">{verdict.summary}</p>
+            <p className="text-zinc-300 leading-relaxed">{verdict.summary}</p>
             <details>
-              <summary className="cursor-pointer text-sm font-medium text-blue-600 hover:underline list-none">
+              <summary className="cursor-pointer text-sm font-medium text-[#3ecf8e] hover:underline list-none">
                 Full reasoning ▾
               </summary>
-              <p className="mt-3 text-sm text-slate-600 whitespace-pre-wrap leading-relaxed pt-3 border-t border-slate-100">
+              <p className="mt-3 text-sm text-zinc-400 whitespace-pre-wrap leading-relaxed pt-3 border-t border-white/10">
                 {verdict.reasoning}
               </p>
             </details>
 
             {verdict.supporting_sources.length > 0 && (
               <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-green-700 mb-2">Supporting sources</h3>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-[#3ecf8e] mb-2">Supporting sources</h3>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {verdict.supporting_sources.map((s, i) => <SourceCard key={i} source={s} />)}
                 </div>
@@ -184,7 +184,7 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
             )}
             {verdict.contradicting_sources.length > 0 && (
               <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-red-600 mb-2">Contradicting sources</h3>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-red-400 mb-2">Contradicting sources</h3>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {verdict.contradicting_sources.map((s, i) => <SourceCard key={i} source={s} />)}
                 </div>
@@ -195,7 +195,7 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
 
         {/* Error */}
         {analysis.status === "failed" && (
-          <div className="rounded-2xl bg-red-50 px-5 py-4 text-sm text-red-700">
+          <div className="rounded-xl bg-red-500/10 border border-red-500/20 px-5 py-4 text-sm text-red-400">
             Analysis failed: {analysis.error ?? "Unknown error"}
           </div>
         )}
@@ -203,7 +203,7 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
         {/* Debate rounds */}
         {rounds.length > 0 && (
           <div>
-            <h2 className="text-base font-semibold text-slate-900 mb-3">Debate transcript</h2>
+            <h2 className="text-base font-semibold text-white mb-3">Debate transcript</h2>
             <div className="space-y-3">
               {rounds.map((r) => <DebateRoundCard key={r.round_number} round={r} />)}
             </div>
