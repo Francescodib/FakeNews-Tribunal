@@ -89,15 +89,62 @@ class JudgeAgent(BaseAgent):
 
 
 def _parse_judge_response(raw: str) -> dict:
-    # Try to extract JSON block
-    json_match = re.search(r"\{[\s\S]*\}", raw)
-    if json_match:
-        try:
-            return json.loads(json_match.group())
-        except json.JSONDecodeError:
-            pass
+    # Walk the string tracking bracket depth to find the outermost JSON object.
+    # This handles markdown code fences (```json ... ```) and nested objects
+    # inside string values (e.g. reasoning field with curly braces).
+    result = _extract_json_object(raw)
+    if result is not None:
+        return result
 
-    # Retry hint: ask for clean JSON on next call (caller handles this)
     logger.warning("judge.parse_error", raw_preview=raw[:200])
-    # Fallback: treat as continue with the raw text as reason
     return {"continue": True, "reason": raw[:500]}
+
+
+def _extract_json_object(text: str) -> dict | None:
+    for start, ch in enumerate(text):
+        if ch != "{":
+            continue
+        depth = 0
+        in_string = False
+        escape_next = False
+        cleaned: list[str] = []
+
+        for c in text[start:]:
+            # Handle escape sequences inside strings
+            if escape_next:
+                cleaned.append(c)
+                escape_next = False
+                continue
+            if c == "\\" and in_string:
+                cleaned.append(c)
+                escape_next = True
+                continue
+            # Track string boundaries
+            if c == '"':
+                in_string = not in_string
+                cleaned.append(c)
+                continue
+            # Inside a string: escape raw control characters that break json.loads
+            if in_string:
+                if c == "\n":
+                    cleaned.append("\\n")
+                elif c == "\r":
+                    cleaned.append("\\r")
+                elif c == "\t":
+                    cleaned.append("\\t")
+                else:
+                    cleaned.append(c)
+                continue
+            # Outside a string: track bracket depth
+            cleaned.append(c)
+            if c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    candidate = "".join(cleaned)
+                    try:
+                        return json.loads(candidate)
+                    except json.JSONDecodeError:
+                        break  # malformed despite bracket match; try next {
+    return None

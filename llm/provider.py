@@ -1,4 +1,5 @@
 import asyncio
+import os
 import time
 
 import litellm
@@ -9,6 +10,15 @@ from core.logging import get_logger
 logger = get_logger(__name__)
 
 litellm.drop_params = True
+
+# Propagate API keys from pydantic-settings to os.environ so LiteLLM can find them
+if settings.ANTHROPIC_API_KEY:
+    os.environ["ANTHROPIC_API_KEY"] = settings.ANTHROPIC_API_KEY
+if settings.OPENAI_API_KEY:
+    os.environ["OPENAI_API_KEY"] = settings.OPENAI_API_KEY
+if settings.GEMINI_API_KEY:
+    os.environ["GEMINI_API_KEY"] = settings.GEMINI_API_KEY
+os.environ.setdefault("OLLAMA_API_BASE", settings.OLLAMA_BASE_URL)
 
 
 def resolve_model(provider: str, model_override: str | None = None) -> str:
@@ -27,6 +37,10 @@ async def complete(
     model = resolve_model(provider, model_override)
     delay = 2.0
 
+    extra_kwargs: dict = {}
+    if provider == "ollama":
+        extra_kwargs["api_base"] = settings.OLLAMA_BASE_URL
+
     for attempt in range(1, max_retries + 1):
         try:
             start = time.monotonic()
@@ -34,6 +48,7 @@ async def complete(
                 model=model,
                 messages=messages,
                 temperature=temperature,
+                **extra_kwargs,
             )
             elapsed_ms = int((time.monotonic() - start) * 1000)
             usage = response.usage or {}
