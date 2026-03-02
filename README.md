@@ -13,7 +13,7 @@
 
 A user submits a claim or news headline. A jury of three specialized AI agents debates it across iterative rounds and returns a structured verdict — with a confidence score, source citations, and full reasoning transparency.
 
-**Current release:** v0.1 — CLI + REST API. Web UI in active development.
+**Current release:** v0.2 — SSE streaming, rate limiting, CLI server mode. Web UI in active development.
 
 ---
 
@@ -111,7 +111,7 @@ PYTHONPATH=. alembic upgrade head
 ### 4a. CLI mode (no server needed)
 
 ```bash
-# Fact-check a claim directly
+# Fact-check a claim directly (local, no server required)
 tribunal check "La Grande Muraglia cinese è visibile dalla Luna"
 
 # Choose provider and model
@@ -122,6 +122,22 @@ tribunal check "The Earth is flat" --provider ollama --model mistral-small --rou
 
 # Output as JSON
 tribunal check "..." --output json
+```
+
+### 4b. CLI server mode (calls REST API)
+
+```bash
+# Register and log in
+tribunal login --server http://localhost:8000 --register
+
+# Re-use stored credentials for subsequent calls
+tribunal check "La Terra è piatta" --server http://localhost:8000 --provider anthropic
+
+# --server can be omitted after login (URL is stored in ~/.tribunal/config.json)
+tribunal check "Vaccines cause autism"
+
+# Log out (invalidates refresh token server-side)
+tribunal logout
 ```
 
 ### 4b. API server mode
@@ -174,8 +190,9 @@ Override the model per-request with `--model <model-name>` (CLI) or `"llm_model"
 | `POST` | `/api/v1/auth/login` | Get tokens |
 | `POST` | `/api/v1/auth/refresh` | Rotate refresh token |
 | `POST` | `/api/v1/auth/logout` | Invalidate refresh token |
-| `POST` | `/api/v1/analysis` | Submit claim → 202 Accepted |
+| `POST` | `/api/v1/analysis` | Submit claim → 202 Accepted (10/hour rate limit) |
 | `GET` | `/api/v1/analysis/{id}` | Poll result |
+| `GET` | `/api/v1/analysis/{id}/stream` | Stream debate progress via SSE |
 | `GET` | `/api/v1/analysis` | History (paginated) |
 | `DELETE` | `/api/v1/analysis/{id}` | Delete analysis |
 | `GET` | `/api/v1/health` | Health check |
@@ -205,10 +222,10 @@ RUN_INTEGRATION=1 PYTHONPATH=. pytest tests/integration/ -v
 - [x] CLI local mode
 - [x] Docker Compose setup
 
-### v0.2 — Streaming & Polish
-- [ ] SSE streaming endpoint (`GET /api/v1/analysis/{id}/stream`)
-- [ ] CLI server mode (calls REST API with auth)
-- [ ] Per-user rate limiting
+### v0.2 — Streaming & Polish *(current)*
+- [x] SSE streaming endpoint (`GET /api/v1/analysis/{id}/stream`)
+- [x] CLI server mode (`tribunal login` + `tribunal check --server URL`)
+- [x] Per-user rate limiting (10 analyses/hour, slowapi)
 - [ ] Admin endpoints (user management, usage stats)
 
 ### v0.3 — Web UI & Export

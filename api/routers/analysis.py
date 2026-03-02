@@ -1,7 +1,8 @@
+import asyncio
 import uuid
-from datetime import datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.orchestrator import DebateOrchestrator
@@ -17,6 +18,8 @@ from api.models.schemas import (
     VerdictLabel,
 )
 from core.config import settings
+from core.events import create_queue, drop_queue, format_sse, get_queue, is_done_sentinel, push_done
+from api.rate_limit import limiter
 from core.logging import get_logger
 from db.models import Analysis, User
 from db.repository import (
@@ -34,9 +37,13 @@ from llm.provider import resolve_model
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 logger = get_logger(__name__)
 
+_STREAM_TIMEOUT_S = 600  # 10 minutes max stream duration
+
 
 @router.post("", response_model=AnalysisCreatedResponse, status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit("10/hour")
 async def submit_analysis(
+    request: Request,
     body: AnalysisRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
@@ -52,6 +59,8 @@ async def submit_analysis(
         llm_model=model,
         language=body.language,
     )
+    # Create SSE queue BEFORE starting background task so no events are lost
+    create_queue(analysis.id)
     background_tasks.add_task(
         _run_debate,
         analysis_id=analysis.id,
@@ -64,6 +73,53 @@ async def submit_analysis(
     return AnalysisCreatedResponse(
         analysis_id=analysis.id,
         status_url=f"/api/v1/analysis/{analysis.id}",
+    )
+
+
+@router.get("/{analysis_id}/stream")
+async def stream_analysis(
+    analysis_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Stream debate progress via Server-Sent Events.
+
+    Events emitted:
+    - round_start      {"round": N, "max_rounds": M}
+    - agent_start      {"agent": "researcher"|"devil_advocate"|"judge", "round": N}
+    - researcher_done  {"round": N, "report": str, "sources": [...]}
+    - advocate_done    {"round": N, "challenge": str, "sources": [...]}
+    - judge_continue   {"round": N, "reason": str}
+    - verdict          {"verdict": {...}, "total_rounds": N, "processing_time_ms": N}
+    - error            {"message": str}
+    - done             {}
+    """
+    analysis = await get_analysis(db, analysis_id)
+    if not analysis or analysis.user_id != current_user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Analysis not found")
+
+    # Already completed: replay from DB
+    if analysis.status == "completed":
+        return StreamingResponse(
+            _replay_completed(analysis),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    if analysis.status == "failed":
+        async def _err():
+            yield format_sse("error", {"message": analysis.error or "Analysis failed"})
+            yield format_sse("done", {})
+        return StreamingResponse(_err(), media_type="text/event-stream")
+
+    q = get_queue(analysis_id)
+    if q is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="Stream not available for this analysis")
+
+    return StreamingResponse(
+        _stream_queue(q, analysis_id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
@@ -107,6 +163,56 @@ async def delete_analysis_endpoint(
     await delete_analysis(db, analysis)
 
 
+# --- SSE generators ---
+
+async def _stream_queue(q: asyncio.Queue, analysis_id: uuid.UUID):
+    try:
+        deadline = asyncio.get_event_loop().time() + _STREAM_TIMEOUT_S
+        while True:
+            remaining = deadline - asyncio.get_event_loop().time()
+            if remaining <= 0:
+                yield format_sse("error", {"message": "Stream timeout"})
+                break
+            try:
+                item = await asyncio.wait_for(q.get(), timeout=min(remaining, 30))
+            except asyncio.TimeoutError:
+                yield ": keepalive\n\n"  # SSE comment keeps connection alive
+                continue
+            if is_done_sentinel(item):
+                break
+            yield format_sse(item["event"], item["data"])
+    finally:
+        yield format_sse("done", {})
+        drop_queue(analysis_id)
+
+
+async def _replay_completed(analysis: Analysis):
+    for rnd in (analysis.debate_json or []):
+        yield format_sse("round_start", {"round": rnd["round_number"]})
+        yield format_sse("researcher_done", {
+            "round": rnd["round_number"],
+            "report": rnd["researcher_report"],
+            "sources": rnd["researcher_sources"],
+        })
+        yield format_sse("advocate_done", {
+            "round": rnd["round_number"],
+            "challenge": rnd["advocate_challenge"],
+            "sources": rnd["advocate_counter_sources"],
+        })
+        if rnd.get("judge_continuation_reason"):
+            yield format_sse("judge_continue", {
+                "round": rnd["round_number"],
+                "reason": rnd["judge_continuation_reason"],
+            })
+    if analysis.verdict_json:
+        yield format_sse("verdict", {
+            "verdict": analysis.verdict_json,
+            "total_rounds": len(analysis.debate_json or []),
+            "processing_time_ms": analysis.processing_ms or 0,
+        })
+    yield format_sse("done", {})
+
+
 # --- Background task ---
 
 async def _run_debate(
@@ -144,6 +250,10 @@ async def _run_debate(
         except Exception as exc:
             logger.error("debate.failed", analysis_id=str(analysis_id), error=str(exc))
             await update_analysis_error(db, analysis, str(exc))
+            from core.events import push
+            await push(analysis_id, "error", {"message": str(exc)})
+        finally:
+            await push_done(analysis_id)
 
 
 # --- Schema conversion ---
@@ -184,16 +294,13 @@ def _verdict_to_schema(v: dict, rounds: list[DebateRound]) -> Verdict:
     supporting_urls = set(v.get("supporting_source_urls", []))
     contradicting_urls = set(v.get("contradicting_source_urls", []))
 
-    supporting = [s for s in all_sources if s.url in supporting_urls]
-    contradicting = [s for s in all_sources if s.url in contradicting_urls]
-
     return Verdict(
         label=VerdictLabel(v.get("label", "UNVERIFIABLE")),
         confidence=float(v.get("confidence", 0.0)),
         summary=v.get("summary", ""),
         reasoning=v.get("reasoning", ""),
-        supporting_sources=supporting,
-        contradicting_sources=contradicting,
+        supporting_sources=[s for s in all_sources if s.url in supporting_urls],
+        contradicting_sources=[s for s in all_sources if s.url in contradicting_urls],
         total_rounds=v.get("total_rounds", len(rounds)),
         processing_time_ms=v.get("processing_time_ms", 0),
     )

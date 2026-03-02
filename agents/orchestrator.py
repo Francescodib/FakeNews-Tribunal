@@ -1,5 +1,4 @@
 import time
-from datetime import datetime, timezone
 from uuid import UUID
 
 from agents.devil_advocate import DevilAdvocateAgent
@@ -29,10 +28,16 @@ class DebateOrchestrator:
         claim: str,
         language: str = "it",
         analysis_id: UUID | None = None,
-        on_round_complete: "DebateRoundCallback | None" = None,
     ) -> "DebateResult":
+        # Import here to avoid circular import at module level
+        from core.events import push
+
         log = logger.bind(analysis_id=str(analysis_id) if analysis_id else None, claim_length=len(claim))
         log.info("orchestrator.start", provider=self.provider, max_rounds=self.max_rounds)
+
+        async def emit(event: str, data: dict) -> None:
+            if analysis_id:
+                await push(analysis_id, event, data)
 
         start_time = time.monotonic()
         rounds: list[dict] = []
@@ -41,8 +46,10 @@ class DebateOrchestrator:
 
         for round_number in range(1, self.max_rounds + 1):
             log.info("orchestrator.round_start", round=round_number)
+            await emit("round_start", {"round": round_number, "max_rounds": self.max_rounds})
 
             # Researcher
+            await emit("agent_start", {"agent": "researcher", "round": round_number})
             researcher_report, researcher_sources = await self._researcher.run(
                 claim=claim,
                 round_number=round_number,
@@ -50,14 +57,25 @@ class DebateOrchestrator:
                 previous_challenge=rounds[-1]["advocate_challenge"] if rounds else None,
                 judge_guidance=judge_guidance,
             )
+            await emit("researcher_done", {
+                "round": round_number,
+                "report": researcher_report,
+                "sources": researcher_sources,
+            })
 
             # Devil's Advocate
+            await emit("agent_start", {"agent": "devil_advocate", "round": round_number})
             advocate_challenge, advocate_sources = await self._advocate.run(
                 claim=claim,
                 round_number=round_number,
                 researcher_report=researcher_report,
                 language=language,
             )
+            await emit("advocate_done", {
+                "round": round_number,
+                "challenge": advocate_challenge,
+                "sources": advocate_sources,
+            })
 
             round_data = {
                 "round_number": round_number,
@@ -68,7 +86,6 @@ class DebateOrchestrator:
                 "judge_continuation_reason": None,
             }
 
-            # Update transcript
             debate_transcript += (
                 f"\n\n--- Round {round_number} ---\n"
                 f"### Researcher\n{researcher_report}\n\n"
@@ -76,6 +93,7 @@ class DebateOrchestrator:
             )
 
             # Judge evaluation
+            await emit("agent_start", {"agent": "judge", "round": round_number})
             judge_result = await self._judge.evaluate(
                 claim=claim,
                 debate_transcript=debate_transcript,
@@ -87,16 +105,12 @@ class DebateOrchestrator:
                 judge_guidance = judge_result.get("reason")
                 round_data["judge_continuation_reason"] = judge_guidance
                 rounds.append(round_data)
-                if on_round_complete:
-                    await on_round_complete(round_data)
+                await emit("judge_continue", {"round": round_number, "reason": judge_guidance})
                 log.info("orchestrator.continue", round=round_number, reason=judge_guidance)
                 continue
 
             # Final verdict
             rounds.append(round_data)
-            if on_round_complete:
-                await on_round_complete(round_data)
-
             verdict_raw = judge_result.get("verdict", {})
             elapsed_ms = int((time.monotonic() - start_time) * 1000)
 
@@ -107,6 +121,11 @@ class DebateOrchestrator:
                 confidence=verdict_raw.get("confidence"),
                 elapsed_ms=elapsed_ms,
             )
+            await emit("verdict", {
+                "verdict": verdict_raw,
+                "total_rounds": round_number,
+                "processing_time_ms": elapsed_ms,
+            })
 
             return DebateResult(
                 verdict=verdict_raw,
@@ -115,17 +134,23 @@ class DebateOrchestrator:
                 processing_time_ms=elapsed_ms,
             )
 
-        # Should not reach here (Judge forces verdict at max_rounds)
+        # Forced fallback (should not reach here — Judge forces verdict at max_rounds)
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
+        fallback_verdict = {
+            "label": "UNVERIFIABLE",
+            "confidence": 0.2,
+            "summary": "Max rounds reached without a verdict.",
+            "reasoning": "The debate exhausted the maximum number of rounds.",
+            "supporting_source_urls": [],
+            "contradicting_source_urls": [],
+        }
+        await emit("verdict", {
+            "verdict": fallback_verdict,
+            "total_rounds": self.max_rounds,
+            "processing_time_ms": elapsed_ms,
+        })
         return DebateResult(
-            verdict={
-                "label": "UNVERIFIABLE",
-                "confidence": 0.2,
-                "summary": "Max rounds reached without a verdict.",
-                "reasoning": "The debate exhausted the maximum number of rounds.",
-                "supporting_source_urls": [],
-                "contradicting_source_urls": [],
-            },
+            verdict=fallback_verdict,
             rounds=rounds,
             total_rounds=self.max_rounds,
             processing_time_ms=elapsed_ms,
@@ -144,6 +169,3 @@ class DebateResult:
         self.rounds = rounds
         self.total_rounds = total_rounds
         self.processing_time_ms = processing_time_ms
-
-
-DebateRoundCallback = "callable[[dict], None]"
