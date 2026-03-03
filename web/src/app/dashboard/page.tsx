@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import {
-  deleteAnalysis, getOllamaModels, listAnalyses, submitAnalysis, type Analysis,
+  deleteAnalysis, getConfig, getOllamaModels, listAnalyses, submitAnalysis, type Analysis,
 } from "@/lib/api";
 import Navbar from "@/components/Navbar";
 import VerdictBadge from "@/components/VerdictBadge";
@@ -24,7 +24,7 @@ const PROVIDER_DEFAULT_MODEL: Record<Provider, string> = {
 const selectCls = "rounded-xl bg-[#1a1a1a] border border-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#3ecf8e]/50 transition-colors";
 
 export default function DashboardPage() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const router = useRouter();
 
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
@@ -32,7 +32,7 @@ export default function DashboardPage() {
   const [fetching, setFetching] = useState(true);
 
   const [claim, setClaim] = useState("");
-  const [provider, setProvider] = useState<Provider>("anthropic");
+  const [provider, setProvider] = useState<Provider>("anthropic"); // overridden by server config on mount
   const [model, setModel] = useState("");
   const [language, setLanguage] = useState("it");
   const [maxRounds, setMaxRounds] = useState(3);
@@ -46,6 +46,14 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!isLoading && !isAuthenticated) router.push("/login");
   }, [isAuthenticated, isLoading, router]);
+
+  useEffect(() => {
+    getConfig().then(({ default_provider }) => {
+      if (PROVIDERS.includes(default_provider as Provider)) {
+        setProvider(default_provider as Provider);
+      }
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -118,8 +126,21 @@ export default function DashboardPage() {
       <Navbar />
       <main className="mx-auto max-w-5xl px-4 py-8 space-y-8">
 
+        {/* Disabled account banner */}
+        {user?.is_disabled && (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-5 py-4 flex items-start gap-3">
+            <span className="text-red-400 mt-0.5">⚠</span>
+            <div>
+              <p className="text-sm font-medium text-red-300">Account disabilitato</p>
+              <p className="text-xs text-red-400/80 mt-0.5">
+                Il tuo account è stato disabilitato da un amministratore. Puoi consultare le analisi precedenti ma non puoi effettuare nuove richieste.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* New analysis */}
-        <section className="rounded-xl bg-[#1a1a1a] border border-white/10 p-6">
+        <section className={`rounded-xl bg-[#1a1a1a] border border-white/10 p-6 ${user?.is_disabled ? "opacity-50 pointer-events-none select-none" : ""}`}>
           <h2 className="text-base font-semibold text-white mb-4">Fact-check a claim</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             {formError && (

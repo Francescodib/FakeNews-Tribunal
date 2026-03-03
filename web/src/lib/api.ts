@@ -101,6 +101,14 @@ export async function login(email: string, password: string) {
   );
 }
 
+export async function refreshTokens(refresh_token: string) {
+  return apiFetch<{ access_token: string; refresh_token: string }>(
+    "/api/v1/auth/refresh",
+    { method: "POST", body: JSON.stringify({ refresh_token }) },
+    false
+  );
+}
+
 export async function logout() {
   const refresh_token = getRefreshToken();
   if (refresh_token) {
@@ -195,13 +203,89 @@ export async function deleteAnalysis(id: string) {
   return apiFetch<void>(`/api/v1/analysis/${id}`, { method: "DELETE" });
 }
 
+export async function resumeAnalysis(id: string) {
+  return apiFetch<{ analysis_id: string; status_url: string }>(
+    `/api/v1/analysis/${id}/resume`,
+    { method: "POST" }
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Providers
 // ---------------------------------------------------------------------------
 
+export async function getConfig(): Promise<{ default_provider: string }> {
+  return apiFetch<{ default_provider: string }>("/api/v1/config", {}, false);
+}
+
+export async function checkHealth(): Promise<void> {
+  await apiFetch<{ status: string }>("/api/v1/health", {}, false, 3_000);
+}
+
 export async function getOllamaModels(): Promise<string[]> {
   const data = await apiFetch<{ models: string[] }>("/api/v1/providers/ollama/models");
   return data.models;
+}
+
+// ---------------------------------------------------------------------------
+// Auth / Me
+// ---------------------------------------------------------------------------
+
+export interface Me {
+  id: string;
+  email: string;
+  is_admin: boolean;
+  is_disabled: boolean;
+}
+
+export async function getMe(): Promise<Me> {
+  return apiFetch<Me>("/api/v1/auth/me");
+}
+
+// ---------------------------------------------------------------------------
+// Admin
+// ---------------------------------------------------------------------------
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  is_admin: boolean;
+  is_disabled: boolean;
+  created_at: string;
+}
+
+export interface AdminUserListResponse {
+  items: AdminUser[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export async function adminListUsers(page = 1, page_size = 50): Promise<AdminUserListResponse> {
+  return apiFetch<AdminUserListResponse>(`/api/v1/admin/users?page=${page}&page_size=${page_size}`);
+}
+
+export async function adminUpdateUser(
+  id: string,
+  body: { email?: string; password?: string; is_admin?: boolean; is_disabled?: boolean }
+): Promise<AdminUser> {
+  return apiFetch<AdminUser>(`/api/v1/admin/users/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function adminDeleteUser(id: string): Promise<void> {
+  return apiFetch<void>(`/api/v1/admin/users/${id}`, { method: "DELETE" });
+}
+
+export async function adminGetStats() {
+  return apiFetch<{
+    total_users: number;
+    total_analyses: number;
+    analyses_by_status: Record<string, number>;
+    analyses_by_provider: Record<string, number>;
+  }>("/api/v1/admin/stats");
 }
 
 export function getExportUrl(id: string) {

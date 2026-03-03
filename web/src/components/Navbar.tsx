@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LogOut, Scale } from "lucide-react";
+import { LogOut, Scale, Shield } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 
 export default function Navbar() {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const router = useRouter();
 
   async function handleLogout() {
@@ -21,13 +21,24 @@ export default function Navbar() {
           <Scale size={18} className="text-[#3ecf8e]" />
           FakeNews Tribunal
         </Link>
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
-        >
-          <LogOut size={14} />
-          Logout
-        </button>
+        <div className="flex items-center gap-4">
+          {user?.is_admin && (
+            <Link
+              href="/admin/users"
+              className="flex items-center gap-1.5 text-sm text-[#3ecf8e] hover:text-white transition-colors"
+            >
+              <Shield size={14} />
+              Admin
+            </Link>
+          )}
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
+          >
+            <LogOut size={14} />
+            Logout
+          </button>
+        </div>
       </div>
     </header>
   );

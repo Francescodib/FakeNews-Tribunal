@@ -7,14 +7,19 @@ from slowapi.errors import RateLimitExceeded
 
 from api.rate_limit import limiter
 from api.routers import admin, analysis, auth, providers
+from api.seed import seed_dev_users
 from core.config import settings
 from core.logging import configure_logging, get_logger
+from db.session import AsyncSessionLocal
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging()
     get_logger(__name__).info("api.start")
+    if settings.ENV == "development":
+        async with AsyncSessionLocal() as db:
+            await seed_dev_users(db)
     yield
     get_logger(__name__).info("api.stop")
 
@@ -45,3 +50,8 @@ app.include_router(providers.router, prefix="/api/v1")
 @app.get("/api/v1/health", tags=["health"])
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/api/v1/config", tags=["config"])
+async def config():
+    return {"default_provider": settings.DEFAULT_PROVIDER}

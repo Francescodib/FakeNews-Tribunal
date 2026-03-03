@@ -28,17 +28,19 @@ _TIER_SCORE: dict[CredibilityTier, float] = {
 
 # Domain → tier mapping (subdomain-stripped, lowercase)
 _HIGH: set[str] = {
-    # Scientific / academic
+    # Scientific / academic journals
     "nature.com", "science.org", "cell.com", "thelancet.com", "nejm.org",
-    "pubmed.ncbi.nlm.nih.gov", "ncbi.nlm.nih.gov", "scholar.google.com",
     "jstor.org", "ssrn.com", "arxiv.org", "biorxiv.org", "medrxiv.org",
-    # International institutions
-    "who.int", "un.org", "europa.eu", "oecd.org", "worldbank.org",
-    "imf.org", "nato.int", "icrc.org", "icc-cpi.int",
+    # US government health & science (registrable domains)
+    "nih.gov", "cdc.gov", "fda.gov", "cms.gov", "hhs.gov",
+    "nasa.gov", "noaa.gov", "usgs.gov", "epa.gov", "nist.gov",
+    # Other .gov / .edu institutions commonly cited
+    "aap.org", "who.int", "un.org", "europa.eu", "oecd.org",
+    "worldbank.org", "imf.org", "nato.int", "icrc.org", "icc-cpi.int",
     # Italian institutions
     "governo.it", "parlamento.it", "quirinale.it", "cortecostituzionale.it",
     "istat.it", "bancaditalia.it", "agcom.it", "garante.it",
-    "mise.gov.it", "salute.gov.it", "esteri.it", "interno.gov.it",
+    "salute.gov.it", "esteri.it", "interno.gov.it",
     # Major news agencies
     "reuters.com", "apnews.com", "afp.com", "ansa.it",
     # Public broadcasters
@@ -46,9 +48,15 @@ _HIGH: set[str] = {
     "npr.org", "pbs.org", "abc.net.au",
     # Fact-checkers
     "snopes.com", "politifact.com", "factcheck.org",
-    "fullfact.org", "pagella-politica.it", "open.online",
+    "fullfact.org", "pagella-politica.it",
     # Major encyclopedias
     "britannica.com", "wikipedia.org",
+    # Top medical / research institutions (registrable domains)
+    "mayoclinic.org", "hopkinsmedicine.org", "clevelandclinic.org",
+    "chop.edu", "harvard.edu", "stanford.edu", "mit.edu",
+    "cochrane.org", "bmj.com", "jamanetwork.com", "acpjournals.org",
+    # Authoritative science communicators
+    "scientificamerican.com", "newscientist.com",
 }
 
 _MEDIUM: set[str] = {
@@ -76,7 +84,7 @@ _LOW: set[str] = {
 
 def _strip_subdomain(domain: str) -> str:
     """Return the registrable domain (last two labels, or three for co.uk etc.)."""
-    parts = domain.lower().lstrip("www.").split(".")
+    parts = domain.lower().removeprefix("www.").split(".")
     # Handle two-part TLDs like co.uk, gov.it, edu.au
     two_part_tlds = {"co.uk", "co.nz", "co.jp", "gov.uk", "gov.it", "edu.au", "ac.uk"}
     if len(parts) >= 3 and ".".join(parts[-2:]) in two_part_tlds:

@@ -1,4 +1,6 @@
+import asyncio
 import time
+from typing import Awaitable, Callable
 from uuid import UUID
 
 from agents.devil_advocate import DevilAdvocateAgent
@@ -28,23 +30,29 @@ class DebateOrchestrator:
         claim: str,
         language: str = "it",
         analysis_id: UUID | None = None,
+        existing_rounds: list[dict] | None = None,
+        on_round_complete: Callable[[dict], Awaitable[None]] | None = None,
     ) -> "DebateResult":
         # Import here to avoid circular import at module level
         from core.events import push
 
+        prior = existing_rounds or []
         log = logger.bind(analysis_id=str(analysis_id) if analysis_id else None, claim_length=len(claim))
-        log.info("orchestrator.start", provider=self.provider, max_rounds=self.max_rounds)
+        log.info("orchestrator.start", provider=self.provider, max_rounds=self.max_rounds, resuming_from=len(prior))
 
         async def emit(event: str, data: dict) -> None:
             if analysis_id:
                 await push(analysis_id, event, data)
 
         start_time = time.monotonic()
-        rounds: list[dict] = []
-        debate_transcript = ""
-        judge_guidance: str | None = None
+        # Restore state from prior rounds
+        rounds: list[dict] = list(prior)
+        debate_transcript = _rebuild_transcript(prior)
+        judge_guidance: str | None = (
+            prior[-1].get("judge_continuation_reason") if prior else None
+        )
 
-        for round_number in range(1, self.max_rounds + 1):
+        for round_number in range(len(prior) + 1, self.max_rounds + 1):
             log.info("orchestrator.round_start", round=round_number)
             await emit("round_start", {"round": round_number, "max_rounds": self.max_rounds})
 
@@ -116,12 +124,16 @@ class DebateOrchestrator:
                 judge_guidance = judge_result.get("reason")
                 round_data["judge_continuation_reason"] = judge_guidance
                 rounds.append(round_data)
+                if on_round_complete:
+                    asyncio.create_task(on_round_complete(round_data))
                 await emit("judge_continue", {"round": round_number, "reason": judge_guidance})
                 log.info("orchestrator.continue", round=round_number, reason=judge_guidance)
                 continue
 
             # Final verdict
             rounds.append(round_data)
+            if on_round_complete:
+                await on_round_complete(round_data)
             verdict_raw = judge_result.get("verdict", {})
             elapsed_ms = int((time.monotonic() - start_time) * 1000)
 
@@ -146,6 +158,7 @@ class DebateOrchestrator:
             )
 
         # Forced fallback (should not reach here — Judge forces verdict at max_rounds)
+        # Emit any round that was completed but not yet covered by the loop break
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
         fallback_verdict = {
             "label": "UNVERIFIABLE",
@@ -166,6 +179,27 @@ class DebateOrchestrator:
             total_rounds=self.max_rounds,
             processing_time_ms=elapsed_ms,
         )
+
+
+def _rebuild_transcript(rounds: list[dict]) -> str:
+    """Reconstruct the debate transcript string from previously saved rounds."""
+    transcript = ""
+    for r in rounds:
+        def _fmt(sources: list[dict]) -> str:
+            if not sources:
+                return "  (none)"
+            return "\n".join(
+                f"  - [{s.get('credibility_tier','unknown')}] {s.get('url','')} — {s.get('title','')}"
+                for s in sources
+            )
+        transcript += (
+            f"\n\n--- Round {r['round_number']} ---\n"
+            f"### Researcher\n{r['researcher_report']}\n"
+            f"**Researcher sources:**\n{_fmt(r.get('researcher_sources', []))}\n\n"
+            f"### Devil's Advocate\n{r['advocate_challenge']}\n"
+            f"**Advocate sources:**\n{_fmt(r.get('advocate_counter_sources', []))}"
+        )
+    return transcript
 
 
 class DebateResult:

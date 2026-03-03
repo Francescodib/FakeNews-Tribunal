@@ -6,7 +6,7 @@ from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.orchestrator import DebateOrchestrator
-from api.middleware.auth_middleware import get_current_user
+from api.middleware.auth_middleware import get_active_user, get_current_user
 from api.models.schemas import (
     AnalysisCreatedResponse,
     AnalysisListResponse,
@@ -18,12 +18,13 @@ from api.models.schemas import (
     VerdictLabel,
 )
 from core.config import settings
-from core.events import create_queue, drop_queue, format_sse, get_queue, is_done_sentinel, push_done
+from core.events import create_queue, format_sse, get_queue, is_done_sentinel, push_done
 from core.pdf import generate_verdict_pdf_async
 from api.rate_limit import limiter
 from core.logging import get_logger
 from db.models import Analysis, User
 from db.repository import (
+    append_analysis_round,
     create_analysis,
     delete_analysis,
     get_analyses_by_user,
@@ -48,7 +49,7 @@ async def submit_analysis(
     body: AnalysisRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_active_user),
 ):
     provider = body.llm_provider
     model = resolve_model(provider, body.llm_model)
@@ -117,9 +118,9 @@ async def stream_analysis(
     if q is None:
         # Queue is gone — server was restarted while this analysis was running.
         # Mark it as failed so the client can show a proper error instead of a 409.
-        await update_analysis_error(db, analysis, "Analysis interrupted by server restart")
+        await update_analysis_error(db, analysis, "Analysis interrupted — server was restarted mid-run. Use Resume to continue.")
         async def _stale():
-            yield format_sse("error", {"message": "Analysis was interrupted (server restarted). Please resubmit."})
+            yield format_sse("error", {"message": "Analysis interrupted — server was restarted mid-run. Use Resume to continue."})
             yield format_sse("done", {})
         return StreamingResponse(_stale(), media_type="text/event-stream")
 
@@ -192,12 +193,52 @@ async def export_analysis_pdf(
 async def delete_analysis_endpoint(
     analysis_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_active_user),
 ):
     analysis = await get_analysis(db, analysis_id)
     if not analysis or analysis.user_id != current_user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Analysis not found")
     await delete_analysis(db, analysis)
+
+
+@router.post("/{analysis_id}/resume", response_model=AnalysisCreatedResponse, status_code=status.HTTP_202_ACCEPTED)
+async def resume_analysis(
+    analysis_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_active_user),
+):
+    analysis = await get_analysis(db, analysis_id)
+    if not analysis or analysis.user_id != current_user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Analysis not found")
+    if analysis.status not in ("failed", "running"):
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="Analysis is not in a resumable state")
+
+    existing_rounds: list[dict] = list(analysis.debate_json or [])
+    remaining = settings.MAX_DEBATE_ROUNDS - len(existing_rounds)
+    if remaining <= 0:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="No rounds remaining to resume")
+
+    # Reset to running, clear previous error
+    analysis.status = "running"
+    analysis.error = None
+    await db.commit()
+
+    create_queue(analysis_id)
+    background_tasks.add_task(
+        _run_debate,
+        analysis_id=analysis.id,
+        claim=analysis.claim,
+        language=analysis.language,
+        provider=analysis.llm_provider,
+        model_override=analysis.llm_model,
+        max_rounds=settings.MAX_DEBATE_ROUNDS,
+        existing_rounds=existing_rounds,
+    )
+    return AnalysisCreatedResponse(
+        analysis_id=analysis.id,
+        status_url=f"/api/v1/analysis/{analysis.id}",
+    )
 
 
 # --- SSE generators ---
@@ -220,7 +261,10 @@ async def _stream_queue(q: asyncio.Queue, analysis_id: uuid.UUID):
             yield format_sse(item["event"], item["data"])
     finally:
         yield format_sse("done", {})
-        drop_queue(analysis_id)
+        # Do NOT drop the queue here. The background task owns the queue
+        # lifecycle and drops it via push_done(). Dropping on client disconnect
+        # would cause reconnecting clients to find q=None and incorrectly
+        # trigger the "server was restarted" error path.
 
 
 async def _replay_completed(analysis: Analysis):
@@ -259,6 +303,7 @@ async def _run_debate(
     provider: str,
     model_override: str | None,
     max_rounds: int,
+    existing_rounds: list[dict] | None = None,
 ) -> None:
     async with AsyncSessionLocal() as db:
         analysis = await get_analysis(db, analysis_id)
@@ -266,6 +311,17 @@ async def _run_debate(
             return
 
         await update_analysis_status(db, analysis, "running")
+
+        # Callback: persists each round to DB as soon as it completes (fire-and-forget)
+        async def _save_round(round_data: dict) -> None:
+            try:
+                async with AsyncSessionLocal() as rdb:
+                    a = await get_analysis(rdb, analysis_id)
+                    if a:
+                        await append_analysis_round(rdb, a, round_data)
+            except Exception as exc:
+                logger.warning("round.save_failed", analysis_id=str(analysis_id), error=str(exc))
+
         try:
             orchestrator = DebateOrchestrator(
                 provider=provider,
@@ -276,6 +332,8 @@ async def _run_debate(
                 claim=claim,
                 language=language,
                 analysis_id=analysis_id,
+                existing_rounds=existing_rounds or [],
+                on_round_complete=_save_round,
             )
             await update_analysis_complete(
                 db,
@@ -297,7 +355,7 @@ async def _run_debate(
 
 def _to_schema(a: Analysis) -> AnalysisResult:
     rounds = [_round_to_schema(r) for r in (a.debate_json or [])]
-    verdict = _verdict_to_schema(a.verdict_json, rounds) if a.verdict_json else None
+    verdict = _verdict_to_schema(a.verdict_json, rounds, a.processing_ms) if a.verdict_json else None
     return AnalysisResult(
         id=a.id,
         claim=a.claim,
@@ -322,7 +380,7 @@ def _round_to_schema(r: dict) -> DebateRound:
     )
 
 
-def _verdict_to_schema(v: dict, rounds: list[DebateRound]) -> Verdict:
+def _verdict_to_schema(v: dict, rounds: list[DebateRound], processing_ms: int | None = None) -> Verdict:
     all_sources: list[Source] = []
     for rnd in rounds:
         all_sources.extend(rnd.researcher_sources)
@@ -339,7 +397,7 @@ def _verdict_to_schema(v: dict, rounds: list[DebateRound]) -> Verdict:
         supporting_sources=[s for s in all_sources if s.url in supporting_urls],
         contradicting_sources=[s for s in all_sources if s.url in contradicting_urls],
         total_rounds=v.get("total_rounds", len(rounds)),
-        processing_time_ms=v.get("processing_time_ms", 0),
+        processing_time_ms=processing_ms or v.get("processing_time_ms", 0),
     )
 
 

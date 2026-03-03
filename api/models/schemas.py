@@ -110,7 +110,15 @@ class AdminUserResponse(BaseModel):
     id: UUID
     email: str
     is_admin: bool
+    is_disabled: bool
     created_at: datetime
+
+
+class AdminUserUpdateRequest(BaseModel):
+    email: str | None = Field(default=None, pattern=r"^[^@]+@[^@]+\.[^@]+$")
+    password: str | None = Field(default=None, min_length=8)
+    is_admin: bool | None = None
+    is_disabled: bool | None = None
 
 
 class AdminUserListResponse(BaseModel):
@@ -125,3 +133,12 @@ class AdminStatsResponse(BaseModel):
     total_analyses: int
     analyses_by_status: dict[str, int]
     analyses_by_provider: dict[str, int]
+
+
+# --- Me ---
+
+class MeResponse(BaseModel):
+    id: UUID
+    email: str
+    is_admin: bool
+    is_disabled: bool

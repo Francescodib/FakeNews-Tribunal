@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Download, Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import {
-  getAnalysis, getAccessToken, streamAnalysisEvents,
+  getAnalysis, getAccessToken, resumeAnalysis, streamAnalysisEvents,
   type Analysis, type DebateRound, type Verdict,
 } from "@/lib/api";
 import Navbar from "@/components/Navbar";
@@ -26,7 +26,12 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
   const [streamEvents, setStreamEvents] = useState<StreamEvent[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [done, setDone] = useState(false);
+  const [disconnected, setDisconnected] = useState(false);
+  const [resuming, setResuming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const autoRetriedRef = useRef(false);
+  const resumeFailRef = useRef(0);
+  const [showReloadHint, setShowReloadHint] = useState(false);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) router.push("/login");
@@ -45,8 +50,10 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
     startStream(id);
   }
 
-  async function startStream(analysisId: string) {
+  async function startStream(analysisId: string, isAutoRetry = false) {
+    if (!isAutoRetry) autoRetriedRef.current = false;
     setStreaming(true);
+    setDisconnected(false);
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     try {
@@ -54,11 +61,23 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
         handleSseEvent(event, data as Record<string, unknown>);
         if (event === "done" || event === "verdict") break;
       }
-    } catch { /* aborted */ } finally {
+    } catch { /* aborted or network drop */ } finally {
       setStreaming(false);
       const final = await getAnalysis(analysisId).catch(() => null);
       if (final) setAnalysis(final);
-      setDone(true);
+      if (!final || final.status === "completed" || final.status === "failed") {
+        setDone(true);
+        if (final?.status === "failed" && resumeFailRef.current >= 2) {
+          setShowReloadHint(true);
+        }
+      } else if (!autoRetriedRef.current) {
+        // First drop: silently retry once after 2s to verify actual server state
+        autoRetriedRef.current = true;
+        setTimeout(() => startStream(analysisId, true), 2000);
+      } else {
+        // Second drop: genuinely disconnected, show manual reconnect
+        setDisconnected(true);
+      }
     }
   }
 
@@ -83,6 +102,28 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
       addEvent({ event, label: `Verdict: ${v?.label}`, detail: `${Math.round((v?.confidence as number) * 100)}% confidence` });
     } else if (event === "error") {
       addEvent({ event, label: `Error: ${data.message}` });
+    }
+  }
+
+  async function handleResume() {
+    resumeFailRef.current += 1;
+    setResuming(true);
+    autoRetriedRef.current = false;
+    try {
+      await resumeAnalysis(id);
+      setDone(false);
+      setDisconnected(false);
+      setStreamEvents([]);
+      // Fetch updated analysis (now "running") then start stream
+      const a = await getAnalysis(id);
+      setAnalysis(a);
+      startStream(id);
+    } catch {
+      // backend will respond with current state — reload to reflect it
+      const a = await getAnalysis(id).catch(() => null);
+      if (a) setAnalysis(a);
+    } finally {
+      setResuming(false);
     }
   }
 
@@ -135,12 +176,27 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
         </div>
 
         {/* Live stream log */}
-        {(streaming || streamEvents.length > 0) && !done && (
+        {(streaming || streamEvents.length > 0 || disconnected) && !done && (
           <div className="rounded-xl bg-[#1a1a1a] border border-white/10 p-5 space-y-2">
-            <div className="flex items-center gap-2 text-sm font-medium text-[#3ecf8e] mb-3">
-              <Loader2 size={14} className="animate-spin" />
-              Analysis in progress…
-            </div>
+            {disconnected ? (
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-amber-400">
+                  <span>⚠</span>
+                  Stream interrotto — l&apos;analisi è ancora in corso sul server
+                </div>
+                <button
+                  onClick={() => startStream(id)}
+                  className="rounded-lg bg-[#3ecf8e]/10 border border-[#3ecf8e]/30 px-3 py-1.5 text-xs font-medium text-[#3ecf8e] hover:bg-[#3ecf8e]/20 transition-colors"
+                >
+                  Riconnetti
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-sm font-medium text-[#3ecf8e] mb-3">
+                <Loader2 size={14} className="animate-spin" />
+                Analysis in progress…
+              </div>
+            )}
             {streamEvents.map((ev, i) => (
               <div key={i} className="flex items-start gap-2 text-sm">
                 <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${
@@ -195,8 +251,29 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
 
         {/* Error */}
         {analysis.status === "failed" && (
-          <div className="rounded-xl bg-red-500/10 border border-red-500/20 px-5 py-4 text-sm text-red-400">
-            Analysis failed: {analysis.error ?? "Unknown error"}
+          <div className="rounded-xl bg-red-500/10 border border-red-500/20 px-5 py-4 space-y-3">
+            <p className="text-sm text-red-400">
+              Analysis failed: {analysis.error ?? "Unknown error"}
+            </p>
+            {showReloadHint && (
+              <p className="text-xs text-amber-400 leading-relaxed">
+                The analysis keeps failing shortly after resuming. If you are running the server with{" "}
+                <code className="font-mono bg-white/10 px-1 rounded">--reload</code>, file changes
+                restart the process and kill background tasks. Run without{" "}
+                <code className="font-mono bg-white/10 px-1 rounded">--reload</code> for stable analyses:{" "}
+                <code className="font-mono bg-white/10 px-1 rounded">uvicorn api.main:app</code>
+              </p>
+            )}
+            <button
+              onClick={handleResume}
+              disabled={resuming}
+              className="flex items-center gap-2 rounded-lg bg-[#1a1a1a] border border-white/10 px-4 py-2 text-sm text-zinc-300 hover:text-white hover:bg-white/10 disabled:opacity-50 transition-colors"
+            >
+              {resuming
+                ? <><Loader2 size={14} className="animate-spin" /> Avvio ripresa…</>
+                : <>↺ Riprendi analisi{rounds.length > 0 ? ` (da round ${rounds.length + 1})` : ""}</>
+              }
+            </button>
           </div>
         )}
 

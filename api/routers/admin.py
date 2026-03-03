@@ -3,14 +3,15 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.middleware.auth_middleware import get_admin_user
+from api.middleware.auth_middleware import get_admin_user, hash_password
 from api.models.schemas import (
     AdminStatsResponse,
     AdminUserListResponse,
     AdminUserResponse,
+    AdminUserUpdateRequest,
 )
 from db.models import User
-from db.repository import delete_user, get_global_stats, get_user_by_id, list_users
+from db.repository import delete_user, get_global_stats, get_user_by_email, get_user_by_id, list_users, update_user
 from db.session import get_db
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -26,7 +27,7 @@ async def list_all_users(
     users, total = await list_users(db, page, page_size)
     return AdminUserListResponse(
         items=[AdminUserResponse(
-            id=u.id, email=u.email, is_admin=u.is_admin, created_at=u.created_at
+            id=u.id, email=u.email, is_admin=u.is_admin, is_disabled=u.is_disabled, created_at=u.created_at
         ) for u in users],
         total=total,
         page=page,
@@ -44,7 +45,39 @@ async def get_user_detail(
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="User not found")
     return AdminUserResponse(
-        id=user.id, email=user.email, is_admin=user.is_admin, created_at=user.created_at
+        id=user.id, email=user.email, is_admin=user.is_admin, is_disabled=user.is_disabled, created_at=user.created_at
+    )
+
+
+@router.patch("/users/{user_id}", response_model=AdminUserResponse)
+async def update_user_endpoint(
+    user_id: uuid.UUID,
+    body: AdminUserUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_admin_user),
+):
+    user = await get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="User not found")
+    if body.email and body.email != user.email:
+        conflict = await get_user_by_email(db, body.email)
+        if conflict:
+            raise HTTPException(status.HTTP_409_CONFLICT, detail="Email already in use")
+    if body.is_admin is False and user_id == admin.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Cannot remove your own admin role")
+    if body.is_disabled is True and user_id == admin.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Cannot disable your own account")
+    updated = await update_user(
+        db,
+        user,
+        email=body.email,
+        hashed_pw=hash_password(body.password) if body.password else None,
+        is_admin=body.is_admin,
+        is_disabled=body.is_disabled,
+    )
+    return AdminUserResponse(
+        id=updated.id, email=updated.email, is_admin=updated.is_admin,
+        is_disabled=updated.is_disabled, created_at=updated.created_at,
     )
 
 

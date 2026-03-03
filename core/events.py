@@ -43,9 +43,18 @@ async def push(analysis_id: UUID, event: str, data: Any) -> None:
 
 
 async def push_done(analysis_id: UUID) -> None:
+    """Signal completion and release the queue.
+
+    The background task is the sole owner of the queue lifecycle.
+    Dropping here (before the sentinel is consumed) is safe: the
+    _stream_queue generator holds a local reference to the queue
+    object and will still read the sentinel via that reference even
+    after the entry is removed from _queues.
+    """
     q = _queues.get(str(analysis_id))
     if q:
         await q.put(_DONE)
+    drop_queue(analysis_id)
 
 
 def is_done_sentinel(item: Any) -> bool:

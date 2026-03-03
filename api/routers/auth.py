@@ -4,12 +4,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.middleware.auth_middleware import (
     create_access_token,
     create_refresh_token_value,
+    get_current_user,
     hash_password,
     hash_token,
     refresh_token_expiry,
     verify_password,
 )
-from api.models.schemas import LoginRequest, LogoutRequest, RefreshRequest, RegisterRequest, TokenResponse
+from api.models.schemas import LoginRequest, LogoutRequest, MeResponse, RefreshRequest, RegisterRequest, TokenResponse
+from db.models import User
 from db.repository import (
     create_refresh_token,
     create_user,
@@ -63,3 +65,13 @@ async def logout(body: LogoutRequest, db: AsyncSession = Depends(get_db)):
     token_record = await get_refresh_token_by_hash(db, hash_token(body.refresh_token))
     if token_record:
         await delete_refresh_token(db, token_record)
+
+
+@router.get("/me", response_model=MeResponse)
+async def me(user: User = Depends(get_current_user)):
+    return MeResponse(
+        id=user.id,
+        email=user.email,
+        is_admin=user.is_admin,
+        is_disabled=user.is_disabled,
+    )

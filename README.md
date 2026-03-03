@@ -14,7 +14,7 @@
 
 A user submits a claim or news headline. A jury of three specialized AI agents debates it across iterative rounds and returns a structured verdict — with a confidence score, source citations, and full reasoning transparency.
 
-**Current release:** v0.3 — Source credibility scoring, PDF export, Web UI.
+**Current release:** v0.3.x — Admin user management, SSE stability, dev seed, auth hardening.
 
 ---
 
@@ -53,7 +53,7 @@ Each round the Judge evaluates whether the evidence is sufficient. If not, the R
 | Web search | Tavily |
 | Source credibility | Domain-tier scoring (80+ domains, high/medium/low) |
 | Database | PostgreSQL 16 + SQLAlchemy async + Alembic |
-| Auth | JWT access tokens + bcrypt + refresh token rotation |
+| Auth | JWT access tokens (8 h dev TTL) + bcrypt + refresh token rotation + proactive silent refresh |
 | PDF export | fpdf2 (pure Python, no native dependencies) |
 | Rate limiting | slowapi (10 analyses/hour per user) |
 | CLI | Typer |
@@ -104,6 +104,7 @@ Key variables:
 | `OLLAMA_BASE_URL` | Local Ollama (default: `http://localhost:11434`) |
 | `TAVILY_API_KEY` | Web search — required for all providers |
 | `JWT_SECRET_KEY` | Auth secret — change in production |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Access token TTL (default: `480` — 8 h; set to `30` in production) |
 | `CORS_ORIGINS` | Allowed origins for the web UI (default: `["http://localhost:3000"]`) |
 
 > You only need the key for the provider you intend to use. `TAVILY_API_KEY` is always required.
@@ -118,10 +119,16 @@ PYTHONPATH=. alembic upgrade head
 ### 4. Start the API server
 
 ```bash
-PYTHONPATH=. uvicorn api.main:app --reload
+PYTHONPATH=. uvicorn api.main:app
 ```
 
 API docs available at `http://localhost:8000/docs`.
+
+> **Dev seed:** when `ENV=development` (default), the server automatically creates four test accounts on startup if they don't already exist:
+> - `admin@tribunal.test` / `Admin1234!` — admin
+> - `user1@tribunal.test` / `User1234!`
+> - `user2@tribunal.test` / `User1234!`
+> - `user3@tribunal.test` / `User1234!`
 
 ### 5. Start the Web UI
 
@@ -140,14 +147,15 @@ Web UI available at `http://localhost:3000`.
 
 The web interface is a Next.js 16 app located in the `web/` subfolder. It provides:
 
-- **Authentication** — register, login, logout with JWT token management
+- **Authentication** — register, login, logout with JWT token management and silent proactive refresh (no mid-session expiry)
 - **Dashboard** — submit claims, configure provider/model/language/rounds, browse history
 - **Ollama model browser** — when Ollama is selected as provider, available models are fetched live from the local instance
 - **Live analysis view** — real-time SSE stream showing each agent's progress as it runs
 - **Verdict display** — label, confidence, summary, full reasoning, supporting and contradicting sources with credibility tiers
 - **Debate transcript** — collapsible round-by-round view of Researcher, Devil's Advocate, and Judge output
 - **PDF export** — one-click download of the full verdict report
-- **Resilient streaming** — if the server restarts mid-analysis, the stuck analysis is automatically marked as failed with a clear error message
+- **Resilient streaming** — client disconnect does not kill the background analysis; the SSE queue persists until the task completes
+- **Admin panel** — list users, enable/disable accounts, delete users, view global usage stats
 
 ---
 
@@ -212,8 +220,11 @@ Override the model per-request with `--model <model-name>` (CLI), `"llm_model"` 
 | `GET` | `/api/v1/analysis` | History (paginated) |
 | `DELETE` | `/api/v1/analysis/{id}` | Delete analysis |
 | `GET` | `/api/v1/providers/ollama/models` | List available Ollama models |
+| `GET` | `/api/v1/auth/me` | Current user info |
+| `POST` | `/api/v1/analysis/{id}/resume` | Resume an interrupted analysis |
 | `GET` | `/api/v1/admin/users` | List all users (admin only) |
 | `GET` | `/api/v1/admin/users/{id}` | User detail (admin only) |
+| `PATCH` | `/api/v1/admin/users/{id}` | Update email/password/is_admin/is_disabled (admin only) |
 | `DELETE` | `/api/v1/admin/users/{id}` | Delete user (admin only) |
 | `GET` | `/api/v1/admin/stats` | Global usage stats (admin only) |
 | `GET` | `/api/v1/health` | Health check |
@@ -279,7 +290,17 @@ RUN_INTEGRATION=1 PYTHONPATH=. pytest tests/integration/ -v
 - [x] Web UI (Next.js 16 + React 19 + Tailwind 4, dark theme)
 - [x] Ollama model browser in web UI (live fetch from local instance)
 - [x] CORS configuration via `CORS_ORIGINS` env var
-- [x] Resilient SSE — stuck analyses auto-recovered on server restart
+- [x] Resilient SSE — client disconnect no longer kills the background analysis
+
+### v0.3.x — Admin, Auth Hardening & Dev Experience ✓
+- [x] User management: `is_disabled` field, PATCH admin endpoint, disable/enable from web UI
+- [x] Resume endpoint — restart an interrupted or failed analysis (`POST /analysis/{id}/resume`)
+- [x] Dev seed — test accounts created automatically on startup (`ENV=development`)
+- [x] Access token TTL increased to 8 h for local LLM sessions (Ollama can take 20–30 min)
+- [x] Proactive silent token refresh in the web UI (60 s before expiry, no mid-session logout)
+- [x] SSE queue lifecycle fix — `push_done()` is the sole owner; client reconnects are safe
+- [x] Credibility scoring fixes — `removeprefix("www.")` instead of `lstrip`; registrable domains in `_HIGH`
+- [x] `processing_time_ms` now correctly populated from DB column
 
 ### Future
 - [ ] Webhook support on verdict completion

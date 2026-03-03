@@ -143,6 +143,33 @@ async def list_users(
     return list(result.scalars().all()), total
 
 
+async def append_analysis_round(db: AsyncSession, analysis: Analysis, round_data: dict) -> None:
+    analysis.debate_json = list(analysis.debate_json or []) + [round_data]
+    await db.commit()
+
+
+async def update_user(
+    db: AsyncSession,
+    user: User,
+    *,
+    email: str | None = None,
+    hashed_pw: str | None = None,
+    is_admin: bool | None = None,
+    is_disabled: bool | None = None,
+) -> User:
+    if email is not None:
+        user.email = email
+    if hashed_pw is not None:
+        user.hashed_pw = hashed_pw
+    if is_admin is not None:
+        user.is_admin = is_admin
+    if is_disabled is not None:
+        user.is_disabled = is_disabled
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
 async def delete_user(db: AsyncSession, user: User) -> None:
     await db.delete(user)
     await db.commit()
