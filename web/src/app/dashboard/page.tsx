@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { List, Loader2, Plus, Trash2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import {
-  deleteAnalysis, getConfig, getOllamaModels, listAnalyses, submitAnalysis, type Analysis,
+  deleteAnalysis, getConfig, getOllamaModels, listAnalyses, submitAnalysis, submitBatch, type Analysis,
 } from "@/lib/api";
 import Navbar from "@/components/Navbar";
 import VerdictBadge from "@/components/VerdictBadge";
@@ -39,13 +39,27 @@ export default function DashboardPage() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
 
+  const [showBatch, setShowBatch] = useState(false);
+  const [batchClaims, setBatchClaims] = useState("");
+  const [submittingBatch, setSubmittingBatch] = useState(false);
+  const [batchError, setBatchError] = useState("");
+
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [ollamaLoading, setOllamaLoading] = useState(false);
   const [ollamaError, setOllamaError] = useState("");
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) router.push("/login");
   }, [isAuthenticated, isLoading, router]);
+
+  useEffect(() => {
+    const expired = localStorage.getItem("sessionExpired") === "true";
+    if (expired) {
+      setSessionExpired(true);
+      localStorage.removeItem("sessionExpired");
+    }
+  }, []);
 
   useEffect(() => {
     getConfig().then(({ default_provider }) => {
@@ -113,6 +127,28 @@ export default function DashboardPage() {
     }
   }
 
+  async function handleBatchSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setBatchError("");
+    const claims = batchClaims.split("\n").map((c) => c.trim()).filter(Boolean);
+    if (claims.length === 0) { setBatchError("Enter at least one claim"); return; }
+    if (claims.length > 10) { setBatchError("Max 10 claims per batch"); return; }
+    setSubmittingBatch(true);
+    try {
+      const res = await submitBatch({
+        claims,
+        llm_provider: provider,
+        llm_model: model || undefined,
+        language,
+        max_rounds: maxRounds,
+      });
+      router.push(`/batch/${res.batch_id}`);
+    } catch (err: unknown) {
+      setBatchError(err instanceof Error ? err.message : "Batch submission failed");
+      setSubmittingBatch(false);
+    }
+  }
+
   async function handleDelete(id: string) {
     if (!confirm("Delete this analysis?")) return;
     await deleteAnalysis(id);
@@ -136,6 +172,29 @@ export default function DashboardPage() {
                 Il tuo account è stato disabilitato da un amministratore. Puoi consultare le analisi precedenti ma non puoi effettuare nuove richieste.
               </p>
             </div>
+          </div>
+        )}
+
+        {/* Session expired banner */}
+        {sessionExpired && (
+          <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-5 py-4 flex items-center justify-between">
+            <div className="flex items-start gap-3">
+              <span className="text-yellow-400 mt-0.5">⏱</span>
+              <div>
+                <p className="text-sm font-medium text-yellow-300">Sessione scaduta</p>
+                <p className="text-xs text-yellow-400/80 mt-0.5">
+                  Il tuo token è scaduto. Esegui di nuovo l'accesso per continuare.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                router.push("/login");
+              }}
+              className="ml-3 flex-shrink-0 rounded-lg bg-yellow-500 px-3 py-1.5 text-xs font-medium text-black hover:bg-yellow-400 transition-colors"
+            >
+              Login di nuovo
+            </button>
           </div>
         )}
 
@@ -232,6 +291,38 @@ export default function DashboardPage() {
             </div>
           </form>
         </section>
+
+        {/* Batch submit */}
+        {!user?.is_disabled && (
+          <section className="rounded-xl bg-[#1a1a1a] border border-white/10 p-6">
+            <button
+              onClick={() => setShowBatch((v) => !v)}
+              className="flex w-full items-center justify-between text-base font-semibold text-white"
+            >
+              <span className="flex items-center gap-2"><List size={16} className="text-[#3ecf8e]" />Batch submit</span>
+              <span className="text-xs text-zinc-500">{showBatch ? "▲ hide" : "▼ expand"}</span>
+            </button>
+            {showBatch && (
+              <form onSubmit={handleBatchSubmit} className="mt-4 space-y-4">
+                <p className="text-xs text-zinc-500">One claim per line (max 10). Uses the same provider/model/language/rounds settings as above.</p>
+                {batchError && (
+                  <p className="rounded-xl bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-400">{batchError}</p>
+                )}
+                <textarea
+                  required value={batchClaims}
+                  onChange={(e) => setBatchClaims(e.target.value)} rows={5}
+                  placeholder={"Claim one…\nClaim two…\nClaim three…"}
+                  className="w-full rounded-xl bg-[#111] border border-white/10 px-4 py-3 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-[#3ecf8e]/50 transition-colors resize-none font-mono"
+                />
+                <button type="submit" disabled={submittingBatch}
+                  className="flex items-center gap-2 rounded-xl bg-[#3ecf8e] px-5 py-2 text-sm font-semibold text-black hover:bg-[#2db37a] disabled:opacity-50 transition-colors">
+                  {submittingBatch ? <Loader2 size={15} className="animate-spin" /> : <List size={15} />}
+                  {submittingBatch ? "Submitting…" : "Submit batch"}
+                </button>
+              </form>
+            )}
+          </section>
+        )}
 
         {/* History */}
         <section>

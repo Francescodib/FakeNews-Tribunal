@@ -142,3 +142,62 @@ class MeResponse(BaseModel):
     email: str
     is_admin: bool
     is_disabled: bool
+
+
+# --- Webhook ---
+
+class WebhookCreate(BaseModel):
+    url: str = Field(..., max_length=500)
+    secret: str | None = Field(default=None, max_length=100)
+
+
+class WebhookResponse(BaseModel):
+    id: UUID
+    url: str
+    is_active: bool
+    created_at: datetime
+
+
+class WebhookDeliveryResponse(BaseModel):
+    id: UUID
+    analysis_id: UUID | None
+    event: str
+    status: str
+    attempts: int
+    last_attempt_at: datetime | None
+    created_at: datetime
+
+
+# --- Batch ---
+
+class BatchRequest(BaseModel):
+    claims: list[str] = Field(..., min_length=1)
+    llm_provider: str = Field(default="anthropic")
+    llm_model: str | None = None
+    language: str = Field(default="it", pattern=r"^[a-z]{2}$")
+    max_rounds: int = Field(default=5, ge=1, le=10)
+
+
+class BatchResponse(BaseModel):
+    batch_id: UUID
+    analysis_ids: list[UUID]
+    status_url: str
+    total: int
+
+
+class BatchStatusResponse(BaseModel):
+    id: UUID
+    status: str
+    total: int
+    completed: int
+    failed: int
+    created_at: datetime
+    completed_at: datetime | None
+    analysis_ids: list[UUID]
+
+
+class BatchListResponse(BaseModel):
+    items: list[BatchStatusResponse]
+    total: int
+    page: int
+    page_size: int

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import Analysis, RefreshToken, User
+from db.models import Analysis, Batch, RefreshToken, User, Webhook, WebhookDelivery
 
 
 # --- User ---
@@ -63,6 +63,7 @@ async def create_analysis(
     llm_provider: str,
     llm_model: str,
     language: str,
+    batch_id: uuid.UUID | None = None,
 ) -> Analysis:
     analysis = Analysis(
         user_id=user_id,
@@ -71,6 +72,7 @@ async def create_analysis(
         llm_provider=llm_provider,
         llm_model=llm_model,
         language=language,
+        batch_id=batch_id,
     )
     db.add(analysis)
     await db.commit()
@@ -195,3 +197,142 @@ async def get_global_stats(db: AsyncSession) -> dict:
         "analyses_by_status": by_status,
         "analyses_by_provider": by_provider,
     }
+
+
+# --- Webhook ---
+
+async def create_webhook(db: AsyncSession, user_id: uuid.UUID, url: str, secret: str | None) -> Webhook:
+    wh = Webhook(user_id=user_id, url=url, secret=secret)
+    db.add(wh)
+    await db.commit()
+    await db.refresh(wh)
+    return wh
+
+
+async def get_webhook(db: AsyncSession, webhook_id: uuid.UUID) -> Webhook | None:
+    result = await db.execute(select(Webhook).where(Webhook.id == webhook_id))
+    return result.scalar_one_or_none()
+
+
+async def get_webhooks_by_user(db: AsyncSession, user_id: uuid.UUID) -> list[Webhook]:
+    result = await db.execute(
+        select(Webhook).where(Webhook.user_id == user_id).order_by(Webhook.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def get_active_webhooks_by_user(db: AsyncSession, user_id: uuid.UUID) -> list[Webhook]:
+    result = await db.execute(
+        select(Webhook).where(Webhook.user_id == user_id, Webhook.is_active == True)
+    )
+    return list(result.scalars().all())
+
+
+async def delete_webhook(db: AsyncSession, webhook: Webhook) -> None:
+    await db.delete(webhook)
+    await db.commit()
+
+
+async def create_webhook_delivery(
+    db: AsyncSession,
+    webhook_id: uuid.UUID,
+    event: str,
+    payload: dict,
+    analysis_id: uuid.UUID | None = None,
+) -> WebhookDelivery:
+    delivery = WebhookDelivery(
+        webhook_id=webhook_id,
+        event=event,
+        payload=payload,
+        analysis_id=analysis_id,
+        status="pending",
+    )
+    db.add(delivery)
+    await db.commit()
+    await db.refresh(delivery)
+    return delivery
+
+
+async def update_webhook_delivery(
+    db: AsyncSession,
+    delivery: WebhookDelivery,
+    status: str,
+    attempts: int,
+) -> None:
+    delivery.status = status
+    delivery.attempts = attempts
+    delivery.last_attempt_at = datetime.now(timezone.utc)
+    await db.commit()
+
+
+async def get_webhook_deliveries(
+    db: AsyncSession, webhook_id: uuid.UUID, limit: int = 50
+) -> list[WebhookDelivery]:
+    result = await db.execute(
+        select(WebhookDelivery)
+        .where(WebhookDelivery.webhook_id == webhook_id)
+        .order_by(WebhookDelivery.created_at.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+# --- Batch ---
+
+async def create_batch(db: AsyncSession, user_id: uuid.UUID, total: int) -> Batch:
+    batch = Batch(user_id=user_id, total=total, status="pending")
+    db.add(batch)
+    await db.commit()
+    await db.refresh(batch)
+    return batch
+
+
+async def get_batch(db: AsyncSession, batch_id: uuid.UUID) -> Batch | None:
+    result = await db.execute(select(Batch).where(Batch.id == batch_id))
+    return result.scalar_one_or_none()
+
+
+async def get_batches_by_user(
+    db: AsyncSession, user_id: uuid.UUID, page: int = 1, page_size: int = 20
+) -> tuple[list[Batch], int]:
+    offset = (page - 1) * page_size
+    total = (await db.execute(select(func.count()).select_from(Batch).where(Batch.user_id == user_id))).scalar_one()
+    result = await db.execute(
+        select(Batch).where(Batch.user_id == user_id).order_by(Batch.created_at.desc()).limit(page_size).offset(offset)
+    )
+    return list(result.scalars().all()), total
+
+
+async def get_analyses_by_batch(db: AsyncSession, batch_id: uuid.UUID) -> list[Analysis]:
+    result = await db.execute(
+        select(Analysis).where(Analysis.batch_id == batch_id).order_by(Analysis.created_at)
+    )
+    return list(result.scalars().all())
+
+
+async def increment_batch_completed(db: AsyncSession, batch_id: uuid.UUID) -> None:
+    async with db.begin_nested():
+        batch = (await db.execute(select(Batch).where(Batch.id == batch_id))).scalar_one_or_none()
+        if not batch:
+            return
+        batch.completed += 1
+        if batch.status == "pending":
+            batch.status = "running"
+        if batch.completed + batch.failed >= batch.total:
+            batch.status = "completed" if batch.failed == 0 else "partially_failed"
+            batch.completed_at = datetime.now(timezone.utc)
+    await db.commit()
+
+
+async def increment_batch_failed(db: AsyncSession, batch_id: uuid.UUID) -> None:
+    async with db.begin_nested():
+        batch = (await db.execute(select(Batch).where(Batch.id == batch_id))).scalar_one_or_none()
+        if not batch:
+            return
+        batch.failed += 1
+        if batch.status == "pending":
+            batch.status = "running"
+        if batch.completed + batch.failed >= batch.total:
+            batch.status = "partially_failed"
+            batch.completed_at = datetime.now(timezone.utc)
+    await db.commit()

@@ -6,7 +6,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from api.rate_limit import limiter
-from api.routers import admin, analysis, auth, providers
+from api.routers import admin, analysis, auth, batch, providers, webhooks
 from api.seed import seed_dev_users
 from core.config import settings
 from core.logging import configure_logging, get_logger
@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="FakeNews Tribunal",
-    version="0.3.0",
+    version="0.4.0",
     lifespan=lifespan,
 )
 
@@ -45,6 +45,8 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(analysis.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(providers.router, prefix="/api/v1")
+app.include_router(webhooks.router, prefix="/api/v1")
+app.include_router(batch.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health", tags=["health"])

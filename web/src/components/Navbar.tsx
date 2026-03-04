@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LogOut, Scale, Shield } from "lucide-react";
+import { LogOut, Scale, Shield, Webhook } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 
 export default function Navbar() {
@@ -22,6 +22,13 @@ export default function Navbar() {
           FakeNews Tribunal
         </Link>
         <div className="flex items-center gap-4">
+          <Link
+            href="/webhooks"
+            className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
+          >
+            <Webhook size={14} />
+            Webhooks
+          </Link>
           {user?.is_admin && (
             <Link
               href="/admin/users"

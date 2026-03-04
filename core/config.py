@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     # Debate
     MAX_DEBATE_ROUNDS: int = 5
 
+    # Webhooks
+    WEBHOOK_TIMEOUT_S: int = 10
+    WEBHOOK_MAX_RETRIES: int = 3
+
+    # Batch
+    MAX_BATCH_SIZE: int = 10
+
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
 

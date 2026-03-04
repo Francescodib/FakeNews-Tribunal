@@ -58,6 +58,11 @@ async function apiFetch<T>(
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
+      // Handle session expiration (401)
+      if (res.status === 401) {
+        clearTokens();
+        localStorage.setItem("sessionExpired", "true");
+      }
       throw new ApiError(res.status, err.detail ?? "Unknown error");
     }
 
@@ -115,7 +120,7 @@ export async function logout() {
     await apiFetch("/api/v1/auth/logout", {
       method: "POST",
       body: JSON.stringify({ refresh_token }),
-    }).catch(() => {});
+    }).catch(() => { });
   }
   clearTokens();
 }
@@ -292,6 +297,92 @@ export function getExportUrl(id: string) {
   const token = getAccessToken();
   return `${API}/api/v1/analysis/${id}/export?token=${token}`;
 }
+
+// ---------------------------------------------------------------------------
+// Webhooks
+// ---------------------------------------------------------------------------
+
+export interface Webhook {
+  id: string;
+  url: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface WebhookDelivery {
+  id: string;
+  analysis_id: string | null;
+  event: string;
+  status: "pending" | "delivered" | "failed";
+  attempts: number;
+  last_attempt_at: string | null;
+  created_at: string;
+}
+
+export async function listWebhooks(): Promise<Webhook[]> {
+  return apiFetch<Webhook[]>("/api/v1/webhooks");
+}
+
+export async function createWebhook(url: string, secret?: string): Promise<Webhook> {
+  return apiFetch<Webhook>("/api/v1/webhooks", {
+    method: "POST",
+    body: JSON.stringify({ url, secret: secret || null }),
+  });
+}
+
+export async function deleteWebhook(id: string): Promise<void> {
+  return apiFetch<void>(`/api/v1/webhooks/${id}`, { method: "DELETE" });
+}
+
+export async function testWebhook(id: string): Promise<void> {
+  await apiFetch<unknown>(`/api/v1/webhooks/${id}/test`, { method: "POST" });
+}
+
+export async function getWebhookDeliveries(id: string): Promise<WebhookDelivery[]> {
+  return apiFetch<WebhookDelivery[]>(`/api/v1/webhooks/${id}/deliveries`);
+}
+
+// ---------------------------------------------------------------------------
+// Batch
+// ---------------------------------------------------------------------------
+
+export interface BatchStatus {
+  id: string;
+  status: "pending" | "running" | "completed" | "partially_failed";
+  total: number;
+  completed: number;
+  failed: number;
+  created_at: string;
+  completed_at: string | null;
+  analysis_ids: string[];
+}
+
+export interface BatchListResponse {
+  items: BatchStatus[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export async function submitBatch(body: {
+  claims: string[];
+  llm_provider: string;
+  llm_model?: string;
+  language: string;
+  max_rounds: number;
+}): Promise<{ batch_id: string; analysis_ids: string[]; status_url: string; total: number }> {
+  return apiFetch("/api/v1/batch", { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function getBatch(id: string): Promise<BatchStatus> {
+  return apiFetch<BatchStatus>(`/api/v1/batch/${id}`);
+}
+
+export async function listBatches(page = 1, page_size = 20): Promise<BatchListResponse> {
+  return apiFetch<BatchListResponse>(`/api/v1/batch?page=${page}&page_size=${page_size}`);
+}
+
+// ---------------------------------------------------------------------------
 
 export function streamAnalysis(id: string): EventSource {
   const token = getAccessToken();

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.orchestrator import DebateOrchestrator
 from api.middleware.auth_middleware import get_active_user, get_current_user
+from core.webhook_dispatcher import dispatch_webhooks
 from api.models.schemas import (
     AnalysisCreatedResponse,
     AnalysisListResponse,
@@ -304,12 +305,14 @@ async def _run_debate(
     model_override: str | None,
     max_rounds: int,
     existing_rounds: list[dict] | None = None,
+    batch_id: uuid.UUID | None = None,
 ) -> None:
     async with AsyncSessionLocal() as db:
         analysis = await get_analysis(db, analysis_id)
         if not analysis:
             return
 
+        user_id = analysis.user_id
         await update_analysis_status(db, analysis, "running")
 
         # Callback: persists each round to DB as soon as it completes (fire-and-forget)
@@ -342,11 +345,33 @@ async def _run_debate(
                 verdict_json=result.verdict,
                 processing_ms=result.processing_time_ms,
             )
+            if user_id:
+                await dispatch_webhooks(
+                    user_id=user_id,
+                    event="verdict.completed",
+                    analysis_id=analysis_id,
+                    payload={"verdict": result.verdict},
+                )
+            if batch_id:
+                from db.repository import increment_batch_completed
+                async with AsyncSessionLocal() as bdb:
+                    await increment_batch_completed(bdb, batch_id)
         except Exception as exc:
             logger.error("debate.failed", analysis_id=str(analysis_id), error=str(exc))
             await update_analysis_error(db, analysis, str(exc))
             from core.events import push
             await push(analysis_id, "error", {"message": str(exc)})
+            if user_id:
+                await dispatch_webhooks(
+                    user_id=user_id,
+                    event="verdict.failed",
+                    analysis_id=analysis_id,
+                    payload={"error": str(exc)},
+                )
+            if batch_id:
+                from db.repository import increment_batch_failed
+                async with AsyncSessionLocal() as bdb:
+                    await increment_batch_failed(bdb, batch_id)
         finally:
             await push_done(analysis_id)
 
