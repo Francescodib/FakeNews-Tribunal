@@ -13,6 +13,7 @@ from db.models import User
 from db.repository import (
     create_analysis,
     create_batch,
+    delete_batch,
     get_analyses_by_batch,
     get_batch,
     get_batches_by_user,
@@ -106,6 +107,18 @@ async def get_batch_status(
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Batch not found")
     analyses = await get_analyses_by_batch(db, batch_id)
     return _batch_to_schema(batch, [a.id for a in analyses])
+
+
+@router.delete("/{batch_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_batch_endpoint(
+    batch_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_active_user),
+):
+    batch = await get_batch(db, batch_id)
+    if not batch or batch.user_id != current_user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Batch not found")
+    await delete_batch(db, batch_id)
 
 
 def _batch_to_schema(b, analysis_ids: list[uuid.UUID]) -> BatchStatusResponse:

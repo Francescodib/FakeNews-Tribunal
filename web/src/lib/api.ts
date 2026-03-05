@@ -401,6 +401,10 @@ export async function listBatches(page = 1, page_size = 20): Promise<BatchListRe
   return apiFetch<BatchListResponse>(`/api/v1/batch?page=${page}&page_size=${page_size}`);
 }
 
+export async function deleteBatch(id: string): Promise<void> {
+  await apiFetch<void>(`/api/v1/batch/${id}`, { method: "DELETE" });
+}
+
 // ---------------------------------------------------------------------------
 
 export function streamAnalysis(id: string): EventSource {

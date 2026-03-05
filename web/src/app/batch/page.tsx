@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { listBatches, type BatchStatus } from "@/lib/api";
+import { listBatches, deleteBatch, type BatchStatus } from "@/lib/api";
 import Navbar from "@/components/Navbar";
 
 export default function BatchListPage() {
@@ -14,6 +14,7 @@ export default function BatchListPage() {
   const [batches, setBatches] = useState<BatchStatus[]>([]);
   const [total, setTotal] = useState(0);
   const [fetching, setFetching] = useState(true);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) router.push("/login");
@@ -43,6 +44,13 @@ export default function BatchListPage() {
     const timer = setInterval(loadBatches, 8_000);
     return () => clearInterval(timer);
   }, [batches]);
+
+  async function handleDelete(id: string) {
+    await deleteBatch(id);
+    setConfirmDelete(null);
+    setBatches((prev) => prev.filter((b) => b.id !== id));
+    setTotal((t) => t - 1);
+  }
 
   async function loadBatches(showSpinner = false) {
     if (showSpinner) setFetching(true);
@@ -80,11 +88,13 @@ export default function BatchListPage() {
             {batches.map((b) => (
               <div
                 key={b.id}
-                onClick={() => router.push(`/batch/${b.id}`)}
-                className="flex items-center gap-4 rounded-xl bg-[#1a1a1a] border border-white/10 px-5 py-4 hover:bg-white/5 transition-colors cursor-pointer"
+                className="flex items-center gap-4 rounded-xl bg-[#1a1a1a] border border-white/10 px-5 py-4 hover:bg-white/5 transition-colors"
               >
-                {/* Date + ID */}
-                <div className="flex-1 min-w-0">
+                {/* Date + ID — clickable */}
+                <div
+                  className="flex-1 min-w-0 cursor-pointer"
+                  onClick={() => router.push(`/batch/${b.id}`)}
+                >
                   <p className="text-xs text-zinc-500 font-mono truncate">{b.id}</p>
                   <p className="text-xs text-zinc-600 mt-0.5">
                     {new Date(b.created_at).toLocaleString()}
@@ -110,11 +120,46 @@ export default function BatchListPage() {
                 <div className="shrink-0">
                   <BatchStatusPill status={b.status} />
                 </div>
+
+                {/* Delete */}
+                <button
+                  onClick={(e) => { e.stopPropagation(); setConfirmDelete(b.id); }}
+                  className="shrink-0 p-1.5 text-zinc-600 hover:text-red-400 transition-colors"
+                  title="Delete batch"
+                >
+                  <Trash2 size={14} />
+                </button>
               </div>
             ))}
           </div>
         )}
       </main>
+
+      {/* Delete confirmation modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-sm rounded-2xl bg-[#1a1a1a] border border-white/10 p-6">
+            <h2 className="text-lg font-semibold text-white mb-2">Delete batch</h2>
+            <p className="text-sm text-zinc-400 mb-6">
+              Delete this batch? Associated analyses will be kept but unlinked from the batch.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => handleDelete(confirmDelete)}
+                className="flex-1 rounded-xl bg-red-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-600 transition-colors"
+              >
+                Delete
+              </button>
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="flex-1 rounded-xl border border-white/10 px-4 py-2.5 text-sm text-zinc-400 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

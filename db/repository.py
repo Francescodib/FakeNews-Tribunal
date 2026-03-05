@@ -310,6 +310,13 @@ async def get_analyses_by_batch(db: AsyncSession, batch_id: uuid.UUID) -> list[A
     return list(result.scalars().all())
 
 
+async def delete_batch(db: AsyncSession, batch_id: uuid.UUID) -> None:
+    batch = (await db.execute(select(Batch).where(Batch.id == batch_id))).scalar_one_or_none()
+    if batch:
+        await db.delete(batch)
+        await db.commit()
+
+
 async def increment_batch_completed(db: AsyncSession, batch_id: uuid.UUID) -> None:
     async with db.begin_nested():
         batch = (await db.execute(select(Batch).where(Batch.id == batch_id))).scalar_one_or_none()
