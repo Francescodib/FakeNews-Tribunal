@@ -59,9 +59,9 @@ export default function BatchPage() {
               <div className="flex items-start gap-3">
                 <span className="text-yellow-400 mt-0.5">⏱</span>
                 <div>
-                  <p className="text-sm font-medium text-yellow-300">Sessione scaduta</p>
+                  <p className="text-sm font-medium text-yellow-300">Session Expired</p>
                   <p className="text-xs text-yellow-400/80 mt-0.5">
-                    Il tuo token è scaduto. Esegui di nuovo l'accesso per continuare.
+                    Your session has expired. Please log in again to continue.
                   </p>
                 </div>
               </div>
@@ -69,7 +69,7 @@ export default function BatchPage() {
                 onClick={() => router.push("/login")}
                 className="ml-3 flex-shrink-0 rounded-lg bg-yellow-500 px-3 py-1.5 text-xs font-medium text-black hover:bg-yellow-400 transition-colors"
               >
-                Login di nuovo
+                Log in again
               </button>
             </div>
           )}
@@ -89,9 +89,9 @@ export default function BatchPage() {
               <div className="flex items-start gap-3">
                 <span className="text-yellow-400 mt-0.5">⏱</span>
                 <div>
-                  <p className="text-sm font-medium text-yellow-300">Sessione scaduta</p>
+                  <p className="text-sm font-medium text-yellow-300">Session Expired</p>
                   <p className="text-xs text-yellow-400/80 mt-0.5">
-                    Il tuo token è scaduto. Esegui di nuovo l'accesso per continuare.
+                    Your session has expired. Please log in again to continue.
                   </p>
                 </div>
               </div>
@@ -99,7 +99,7 @@ export default function BatchPage() {
                 onClick={() => router.push("/login")}
                 className="ml-3 flex-shrink-0 rounded-lg bg-yellow-500 px-3 py-1.5 text-xs font-medium text-black hover:bg-yellow-400 transition-colors"
               >
-                Login di nuovo
+                Log in again
               </button>
             </div>
           )}
@@ -120,9 +120,9 @@ export default function BatchPage() {
             <div className="flex items-start gap-3">
               <span className="text-yellow-400 mt-0.5">⏱</span>
               <div>
-                <p className="text-sm font-medium text-yellow-300">Sessione scaduta</p>
+                <p className="text-sm font-medium text-yellow-300">Session Expired</p>
                 <p className="text-xs text-yellow-400/80 mt-0.5">
-                  Il tuo token è scaduto. Esegui di nuovo l'accesso per continuare.
+                  Your session has expired. Please log in again to continue.
                 </p>
               </div>
             </div>
@@ -130,7 +130,7 @@ export default function BatchPage() {
               onClick={() => router.push("/login")}
               className="ml-3 flex-shrink-0 rounded-lg bg-yellow-500 px-3 py-1.5 text-xs font-medium text-black hover:bg-yellow-400 transition-colors"
             >
-              Login di nuovo
+              Log in again
             </button>
           </div>
         )}

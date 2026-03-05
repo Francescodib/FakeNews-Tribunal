@@ -107,7 +107,7 @@ function VerdictBarChart({ analyses }: { analyses: Analysis[] }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Verdetti</span>
+      <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Verdicts</span>
       <svg
         viewBox={`0 0 ${svgW} ${svgH}`}
         width="100%"
@@ -459,9 +459,9 @@ export default function DashboardPage() {
           <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-5 py-4 flex items-start gap-3">
             <span className="text-red-400 mt-0.5">⚠</span>
             <div>
-              <p className="text-sm font-medium text-red-300">Account disabilitato</p>
+              <p className="text-sm font-medium text-red-300">Account Disabled</p>
               <p className="text-xs text-red-400/80 mt-0.5">
-                Il tuo account è stato disabilitato da un amministratore. Puoi consultare le analisi precedenti ma non puoi effettuare nuove richieste.
+                Your account has been disabled by an administrator. You can view previous analyses but cannot submit new requests.
               </p>
             </div>
           </div>
@@ -473,9 +473,9 @@ export default function DashboardPage() {
             <div className="flex items-start gap-3">
               <span className="text-yellow-400 mt-0.5">⏱</span>
               <div>
-                <p className="text-sm font-medium text-yellow-300">Sessione scaduta</p>
+                <p className="text-sm font-medium text-yellow-300">Session Expired</p>
                 <p className="text-xs text-yellow-400/80 mt-0.5">
-                  Il tuo token è scaduto. Esegui di nuovo l'accesso per continuare.
+                  Your session has expired. Please log in again to continue.
                 </p>
               </div>
             </div>
@@ -485,7 +485,7 @@ export default function DashboardPage() {
               }}
               className="ml-3 flex-shrink-0 rounded-lg bg-yellow-500 px-3 py-1.5 text-xs font-medium text-black hover:bg-yellow-400 transition-colors"
             >
-              Login di nuovo
+              Log in again
             </button>
           </div>
         )}
@@ -499,17 +499,17 @@ export default function DashboardPage() {
           {/* --- Stat cards --- */}
           <div className="grid grid-cols-3 gap-3">
             <StatCard
-              label="Totale analisi"
+              label="Total analyses"
               value={total}
               accent="#3ecf8e"
             />
             <StatCard
-              label="Completate"
+              label="Completed"
               value={completedCount}
               accent="#3ecf8e"
             />
             <StatCard
-              label="In corso"
+              label="In progress"
               value={inProgressCount}
               accent={inProgressCount > 0 ? "#60a5fa" : "#71717a"}
               pulse={inProgressCount > 0}
@@ -665,7 +665,7 @@ export default function DashboardPage() {
         {/* History */}
         <section>
           <h2 className="text-base font-semibold text-white mb-3">
-            History{total > 0 && <span className="text-zinc-500 font-normal text-sm ml-2">({total} analisi)</span>}
+            History{total > 0 && <span className="text-zinc-500 font-normal text-sm ml-2">({total} analyses)</span>}
           </h2>
           {fetching ? (
             <div className="flex justify-center py-12"><Loader2 className="animate-spin text-zinc-600" /></div>

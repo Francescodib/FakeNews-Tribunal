@@ -55,7 +55,7 @@ export default function Navbar() {
               className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
             >
               <User size={14} />
-              Profilo
+              Profile
             </Link>
           )}
           <button

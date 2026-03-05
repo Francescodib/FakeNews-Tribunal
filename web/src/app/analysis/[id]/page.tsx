@@ -238,13 +238,13 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-2 text-sm font-medium text-amber-400">
                   <span>⚠</span>
-                  Stream interrotto — l&apos;analisi è ancora in corso sul server
+                  Stream disconnected — analysis is still running on the server
                 </div>
                 <button
                   onClick={() => startStream(id)}
                   className="rounded-lg bg-[#3ecf8e]/10 border border-[#3ecf8e]/30 px-3 py-1.5 text-xs font-medium text-[#3ecf8e] hover:bg-[#3ecf8e]/20 transition-colors"
                 >
-                  Riconnetti
+                  Reconnect
                 </button>
               </div>
             ) : (

@@ -95,7 +95,7 @@ function EditForm({ user, onSave, onCancel, currentUserId }: EditFormProps) {
             className="accent-[#3ecf8e] w-4 h-4"
           />
           <span className={isSelf ? "text-zinc-500" : "text-zinc-300"}>Admin</span>
-          {isSelf && <span className="text-xs text-zinc-600">(non modificabile su sé stessi)</span>}
+          {isSelf && <span className="text-xs text-zinc-600">(cannot edit yourself)</span>}
         </label>
         <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
           <input
@@ -105,8 +105,8 @@ function EditForm({ user, onSave, onCancel, currentUserId }: EditFormProps) {
             onChange={(e) => setIsDisabled(e.target.checked)}
             className="accent-red-500 w-4 h-4"
           />
-          <span className={isSelf ? "text-zinc-500" : "text-zinc-300"}>Disabilitato</span>
-          {isSelf && <span className="text-xs text-zinc-600">(non modificabile su sé stessi)</span>}
+          <span className={isSelf ? "text-zinc-500" : "text-zinc-300"}>Disabled</span>
+          {isSelf && <span className="text-xs text-zinc-600">(cannot edit yourself)</span>}
         </label>
       </div>
       {error && <p className="text-xs text-red-400">{error}</p>}
@@ -117,14 +117,14 @@ function EditForm({ user, onSave, onCancel, currentUserId }: EditFormProps) {
           className="flex items-center gap-1.5 rounded-lg bg-[#3ecf8e] px-4 py-2 text-sm font-medium text-black hover:bg-[#36b87e] disabled:opacity-50 transition-colors"
         >
           {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-          Salva
+          Save
         </button>
         <button
           onClick={onCancel}
           className="flex items-center gap-1.5 rounded-lg border border-white/10 px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors"
         >
           <X size={14} />
-          Annulla
+          Cancel
         </button>
       </div>
     </div>
@@ -146,10 +146,10 @@ function StatsBar({ stats }: { stats: Stats }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
       {[
-        { label: "Utenti", value: stats.total_users },
-        { label: "Analisi", value: stats.total_analyses },
-        { label: "Completate", value: stats.analyses_by_status["completed"] ?? 0 },
-        { label: "Fallite", value: stats.analyses_by_status["failed"] ?? 0 },
+        { label: "Users", value: stats.total_users },
+        { label: "Analyses", value: stats.total_analyses },
+        { label: "Completed", value: stats.analyses_by_status["completed"] ?? 0 },
+        { label: "Failed", value: stats.analyses_by_status["failed"] ?? 0 },
       ].map((s) => (
         <div key={s.label} className="rounded-xl bg-[#1a1a1a] border border-white/10 p-4 text-center">
           <p className="text-2xl font-bold text-[#3ecf8e]">{s.value}</p>
@@ -212,7 +212,7 @@ export default function AdminUsersPage() {
       const updated = await adminUpdateUser(u.id, { is_disabled: !u.is_disabled });
       setUsers((prev) => prev.map((x) => (x.id === u.id ? updated : x)));
     } catch (e: unknown) {
-      setActionError(e instanceof Error ? e.message : "Errore");
+      setActionError(e instanceof Error ? e.message : "Error");
     }
   }
 
@@ -224,7 +224,7 @@ export default function AdminUsersPage() {
       setUsers((prev) => prev.filter((u) => u.id !== id));
       setTotal((t) => t - 1);
     } catch (e: unknown) {
-      setActionError(e instanceof Error ? e.message : "Errore nella cancellazione");
+      setActionError(e instanceof Error ? e.message : "Error deleting user");
     }
   }
 
@@ -248,8 +248,8 @@ export default function AdminUsersPage() {
       <Navbar />
       <main className="mx-auto max-w-5xl px-4 py-8">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-white">Gestione utenti</h1>
-          <p className="text-sm text-zinc-400 mt-1">{total} utente{total !== 1 ? "i" : ""} registrat{total !== 1 ? "i" : "o"}</p>
+          <h1 className="text-2xl font-bold text-white">User Management</h1>
+          <p className="text-sm text-zinc-400 mt-1">{total} registered user{total !== 1 ? "s" : ""}</p>
         </div>
 
         {stats && <StatsBar stats={stats} />}
@@ -270,10 +270,10 @@ export default function AdminUsersPage() {
               <thead>
                 <tr className="border-b border-white/10 bg-[#111]">
                   <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Email</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Ruolo</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Stato</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Registrato</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-zinc-400 uppercase tracking-wider">Azioni</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Role</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Registered</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-zinc-400 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
@@ -287,7 +287,7 @@ export default function AdminUsersPage() {
                           {u.email}
                         </span>
                         {u.id === user.id && (
-                          <span className="ml-2 text-xs text-[#3ecf8e]">(tu)</span>
+                          <span className="ml-2 text-xs text-[#3ecf8e]">(you)</span>
                         )}
                       </td>
                       <td className="px-4 py-3.5">
@@ -296,22 +296,22 @@ export default function AdminUsersPage() {
                             <Shield size={12} /> Admin
                           </span>
                         ) : (
-                          <span className="text-zinc-500 text-xs">Utente</span>
+                          <span className="text-zinc-500 text-xs">User</span>
                         )}
                       </td>
                       <td className="px-4 py-3.5">
                         {u.is_disabled ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-400">
-                            <UserX size={11} /> Disabilitato
+                            <UserX size={11} /> Disabled
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 rounded-full bg-[#3ecf8e]/10 px-2 py-0.5 text-xs font-medium text-[#3ecf8e]">
-                            <UserCheck size={11} /> Attivo
+                            <UserCheck size={11} /> Active
                           </span>
                         )}
                       </td>
                       <td className="px-4 py-3.5 text-zinc-400 text-xs">
-                        {new Date(u.created_at).toLocaleDateString("it-IT")}
+                        {new Date(u.created_at).toLocaleDateString("en-US")}
                       </td>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center justify-end gap-2">
@@ -319,7 +319,7 @@ export default function AdminUsersPage() {
                           {u.id !== user.id && (
                             <button
                               onClick={() => handleToggleDisabled(u)}
-                              title={u.is_disabled ? "Riabilita account" : "Disabilita account"}
+                              title={u.is_disabled ? "Enable account" : "Disable account"}
                               className={`rounded-lg p-1.5 transition-colors ${
                                 u.is_disabled
                                   ? "text-[#3ecf8e] hover:bg-[#3ecf8e]/10"
@@ -332,7 +332,7 @@ export default function AdminUsersPage() {
                           {/* Edit */}
                           <button
                             onClick={() => setEditingId(editingId === u.id ? null : u.id)}
-                            title="Modifica"
+                            title="Edit"
                             className="rounded-lg p-1.5 text-zinc-400 hover:bg-white/5 hover:text-white transition-colors"
                           >
                             <Pencil size={15} />
@@ -341,7 +341,7 @@ export default function AdminUsersPage() {
                           {u.id !== user.id && (
                             <button
                               onClick={() => setConfirmDelete(u.id)}
-                              title="Elimina"
+                              title="Delete"
                               className="rounded-lg p-1.5 text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-colors"
                             >
                               <Trash2 size={15} />
@@ -393,22 +393,22 @@ export default function AdminUsersPage() {
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
           <div className="mx-4 w-full max-w-sm rounded-2xl bg-[#1a1a1a] border border-white/10 p-6">
-            <h2 className="text-lg font-semibold text-white mb-2">Conferma eliminazione</h2>
+            <h2 className="text-lg font-semibold text-white mb-2">Confirm deletion</h2>
             <p className="text-sm text-zinc-400 mb-6">
-              Sei sicuro di voler eliminare questo utente? L&apos;operazione è irreversibile e cancellerà tutti i dati associati.
+              Are you sure you want to delete this user? This action is irreversible and will permanently delete all associated data.
             </p>
             <div className="flex gap-3">
               <button
                 onClick={() => handleDelete(confirmDelete)}
                 className="flex-1 rounded-xl bg-red-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-600 transition-colors"
               >
-                Elimina
+                Delete
               </button>
               <button
                 onClick={() => setConfirmDelete(null)}
                 className="flex-1 rounded-xl border border-white/10 px-4 py-2.5 text-sm text-zinc-400 hover:text-white transition-colors"
               >
-                Annulla
+                Cancel
               </button>
             </div>
           </div>
