@@ -18,6 +18,14 @@ A user submits a claim or news headline. A jury of three specialized AI agents d
 
 ---
 
+## Screenshots
+
+| Login | Dashboard |
+|---|---|
+| ![Login](docs/screenshots/01_login.png) | ![Dashboard](docs/screenshots/02_dashboard.png) |
+
+---
+
 ## How It Works
 
 ```
@@ -267,6 +275,7 @@ Override the model per-request with `--model <model-name>` (CLI), `"llm_model"` 
 | `POST` | `/api/v1/batch` | Submit up to 10 claims as a batch |
 | `GET` | `/api/v1/batch` | List batches (paginated) |
 | `GET` | `/api/v1/batch/{id}` | Batch status and progress |
+| `DELETE` | `/api/v1/batch/{id}` | Delete a batch (analyses are kept, unlinked) |
 
 ### Webhooks
 
