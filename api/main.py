@@ -10,18 +10,25 @@ from api.routers import admin, analysis, auth, batch, providers, webhooks
 from api.seed import seed_dev_users
 from core.config import settings
 from core.logging import configure_logging, get_logger
-from db.session import AsyncSessionLocal
+from core.startup_checks import run_startup_checks
+from db.session import AsyncSessionLocal, engine
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging()
-    get_logger(__name__).info("api.start")
+    log = get_logger(__name__)
+    log.info("api.start")
+
+    # Run startup checks: config summary, dev warnings, DB reachability,
+    # and Alembic migration state.  Never raises — only logs warnings.
+    await run_startup_checks(settings, engine)
+
     if settings.ENV == "development":
         async with AsyncSessionLocal() as db:
             await seed_dev_users(db)
     yield
-    get_logger(__name__).info("api.stop")
+    log.info("api.stop")
 
 
 app = FastAPI(
@@ -39,6 +46,7 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
 )
 
 app.include_router(auth.router, prefix="/api/v1")

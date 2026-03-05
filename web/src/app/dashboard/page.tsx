@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { List, Loader2, Plus, Trash2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import {
-  deleteAnalysis, getConfig, getOllamaModels, listAnalyses, submitAnalysis, submitBatch, type Analysis,
+  deleteAnalysis, getConfig, getOllamaModels, listAnalyses, submitAnalysis, submitBatch,
+  streamAnalysisEvents, type Analysis,
 } from "@/lib/api";
 import Navbar from "@/components/Navbar";
 import VerdictBadge from "@/components/VerdictBadge";
@@ -23,6 +24,189 @@ const PROVIDER_DEFAULT_MODEL: Record<Provider, string> = {
 
 const selectCls = "rounded-xl bg-[#1a1a1a] border border-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#3ecf8e]/50 transition-colors";
 
+// ---------------------------------------------------------------------------
+// Verdict chart colours
+// ---------------------------------------------------------------------------
+const VERDICT_COLORS: Record<string, string> = {
+  TRUE:          "#3ecf8e",
+  FALSE:         "#ef4444",
+  MISLEADING:    "#f59e0b",
+  PARTIALLY_TRUE:"#f97316",
+  UNVERIFIABLE:  "#71717a",
+};
+
+const VERDICT_LABELS: Record<string, string> = {
+  TRUE:          "TRUE",
+  FALSE:         "FALSE",
+  MISLEADING:    "MISLEAD.",
+  PARTIALLY_TRUE:"PARTIAL",
+  UNVERIFIABLE:  "UNVERF.",
+};
+
+// ---------------------------------------------------------------------------
+// Activity feed entry
+// ---------------------------------------------------------------------------
+interface FeedEntry {
+  id: number;
+  ts: string;
+  msg: string;
+}
+
+let feedSeq = 0;
+function makeFeedEntry(msg: string): FeedEntry {
+  const now = new Date();
+  const ts = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
+  return { id: ++feedSeq, ts, msg };
+}
+
+// Human-readable SSE event → message
+function eventToMessage(event: string, data: unknown): string | null {
+  switch (event) {
+    case "started":       return "Analysis started";
+    case "round_start": {
+      const d = data as Record<string, unknown>;
+      return `Round ${d?.round ?? "?"} started`;
+    }
+    case "researcher":    return "Researcher thinking…";
+    case "advocate":      return "Devil's advocate reviewing…";
+    case "judge":         return "Judge deliberating…";
+    case "round_end": {
+      const d = data as Record<string, unknown>;
+      return `Round ${d?.round ?? "?"} complete`;
+    }
+    case "done":          return "Analysis complete";
+    case "error":         return "Stream error";
+    default:              return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sub-component: Verdict bar chart (pure SVG)
+// ---------------------------------------------------------------------------
+function VerdictBarChart({ analyses }: { analyses: Analysis[] }) {
+  // Count verdicts only from completed analyses that have a verdict label
+  const counts: Record<string, number> = {};
+  for (const a of analyses) {
+    if (a.status === "completed" && a.verdict?.label) {
+      counts[a.verdict.label] = (counts[a.verdict.label] ?? 0) + 1;
+    }
+  }
+
+  const entries = Object.entries(counts).filter(([, v]) => v > 0);
+  // Show chart only if at least 2 distinct verdict types
+  if (entries.length < 2) return null;
+
+  const BAR_W = 36;
+  const GAP   = 16;
+  const MAX_H = 100;
+  const LABEL_H = 36; // space for label + count below bars
+  const PADDING_X = 8;
+  const maxCount = Math.max(...entries.map(([, v]) => v));
+  const svgW = entries.length * (BAR_W + GAP) - GAP + PADDING_X * 2;
+  const svgH = MAX_H + LABEL_H + 8; // 8px top padding
+
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Verdetti</span>
+      <svg
+        viewBox={`0 0 ${svgW} ${svgH}`}
+        width="100%"
+        style={{ maxWidth: 320, display: "block" }}
+        aria-label="Verdict distribution bar chart"
+      >
+        {entries.map(([label, count], i) => {
+          const barH = Math.max(4, Math.round((count / maxCount) * MAX_H));
+          const x = PADDING_X + i * (BAR_W + GAP);
+          const y = 8 + MAX_H - barH;
+          const color = VERDICT_COLORS[label] ?? "#71717a";
+          const shortLabel = VERDICT_LABELS[label] ?? label;
+          return (
+            <g key={label}>
+              {/* Bar */}
+              <rect
+                x={x}
+                y={y}
+                width={BAR_W}
+                height={barH}
+                rx={5}
+                fill={color}
+                opacity={0.85}
+              />
+              {/* Count above bar */}
+              <text
+                x={x + BAR_W / 2}
+                y={y - 4}
+                textAnchor="middle"
+                fontSize={10}
+                fontWeight="600"
+                fill={color}
+              >
+                {count}
+              </text>
+              {/* Abbreviated label below bar */}
+              <text
+                x={x + BAR_W / 2}
+                y={8 + MAX_H + 16}
+                textAnchor="middle"
+                fontSize={9}
+                fill="#71717a"
+              >
+                {shortLabel}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sub-component: Live activity feed
+// ---------------------------------------------------------------------------
+function LiveFeed({ feed }: { feed: FeedEntry[] }) {
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [feed]);
+
+  if (feed.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <span
+          className="inline-block w-2 h-2 rounded-full bg-blue-400"
+          style={{ animation: "dashboard-pulse 1.4s ease-in-out infinite" }}
+        />
+        <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
+          Live activity
+        </span>
+      </div>
+      <div
+        className="rounded-xl bg-[#111] border border-white/10 px-4 py-3 overflow-y-auto font-mono"
+        style={{ maxHeight: 160, minHeight: 80 }}
+      >
+        {feed.map((entry) => (
+          <div
+            key={entry.id}
+            style={{ animation: "dashboard-fadein 0.35s ease both" }}
+            className="flex gap-2 text-xs leading-5"
+          >
+            <span className="text-zinc-600 shrink-0">{entry.ts}</span>
+            <span className="text-zinc-300">{entry.msg}</span>
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main page
+// ---------------------------------------------------------------------------
 export default function DashboardPage() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const router = useRouter();
@@ -30,6 +214,8 @@ export default function DashboardPage() {
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [total, setTotal] = useState(0);
   const [fetching, setFetching] = useState(true);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   const [claim, setClaim] = useState("");
   const [provider, setProvider] = useState<Provider>("anthropic"); // overridden by server config on mount
@@ -48,6 +234,11 @@ export default function DashboardPage() {
   const [ollamaLoading, setOllamaLoading] = useState(false);
   const [ollamaError, setOllamaError] = useState("");
   const [sessionExpired, setSessionExpired] = useState(false);
+
+  // Live feed
+  const [feed, setFeed] = useState<FeedEntry[]>([]);
+  const sseAbortRef = useRef<AbortController | null>(null);
+  const sseIdRef    = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) router.push("/login");
@@ -71,8 +262,83 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    loadAnalyses();
+    loadAnalyses(true, 1);
   }, [isAuthenticated]);
+
+  // Reload when page changes (spinner only if list is empty)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    loadAnalyses(analyses.length === 0, page);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
+
+  // A) Refresh when tab becomes visible again — keep current page
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const onVisible = () => { if (document.visibilityState === "visible") loadAnalyses(false, page); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [isAuthenticated, page]);
+
+  // B) Poll every 8s while there are pending/running analyses — keep current page
+  useEffect(() => {
+    const hasRunning = analyses.some((a) => a.status === "pending" || a.status === "running");
+    if (!hasRunning) return;
+    const timer = setInterval(() => loadAnalyses(false, page), 8_000);
+    return () => clearInterval(timer);
+  }, [analyses, page]);
+
+  // C) Live SSE feed: connect to first running analysis (one connection at a time)
+  useEffect(() => {
+    const runningAnalysis = analyses.find(
+      (a) => a.status === "running" || a.status === "pending"
+    );
+
+    if (!runningAnalysis) {
+      // No active analyses — tear down any open SSE connection
+      if (sseAbortRef.current) {
+        sseAbortRef.current.abort();
+        sseAbortRef.current = null;
+        sseIdRef.current = null;
+      }
+      return;
+    }
+
+    // Same analysis already being streamed — do nothing
+    if (sseIdRef.current === runningAnalysis.id) return;
+
+    // Different analysis or first time — abort previous and start fresh
+    if (sseAbortRef.current) {
+      sseAbortRef.current.abort();
+    }
+    const ctrl = new AbortController();
+    sseAbortRef.current = ctrl;
+    sseIdRef.current = runningAnalysis.id;
+
+    (async () => {
+      try {
+        for await (const { event, data } of streamAnalysisEvents(runningAnalysis.id, ctrl.signal)) {
+          const msg = eventToMessage(event, data);
+          if (msg) {
+            setFeed((prev) => {
+              const next = [...prev, makeFeedEntry(msg)];
+              return next.length > 8 ? next.slice(next.length - 8) : next;
+            });
+          }
+        }
+      } catch {
+        // Aborted or network error — silently swallow
+      }
+    })();
+
+    return () => {
+      ctrl.abort();
+      if (sseAbortRef.current === ctrl) {
+        sseAbortRef.current = null;
+        sseIdRef.current = null;
+      }
+    };
+  }, [analyses]);
 
   // When provider changes, reset model and fetch Ollama list if needed
   useEffect(() => {
@@ -97,14 +363,14 @@ export default function DashboardPage() {
     }
   }
 
-  async function loadAnalyses() {
-    setFetching(true);
+  async function loadAnalyses(showSpinner = false, pageNum = page) {
+    if (showSpinner) setFetching(true);
     try {
-      const res = await listAnalyses();
+      const res = await listAnalyses(pageNum, PAGE_SIZE);
       setAnalyses(res.items);
       setTotal(res.total);
     } finally {
-      setFetching(false);
+      if (showSpinner) setFetching(false);
     }
   }
 
@@ -152,13 +418,39 @@ export default function DashboardPage() {
   async function handleDelete(id: string) {
     if (!confirm("Delete this analysis?")) return;
     await deleteAnalysis(id);
-    setAnalyses((prev) => prev.filter((a) => a.id !== id));
+    const newList = analyses.filter((a) => a.id !== id);
+    setAnalyses(newList);
+    if (newList.length === 0 && page > 1) {
+      setPage((p) => p - 1); // useEffect on [page] will reload
+    }
   }
+
+  // ---------------------------------------------------------------------------
+  // Derived stats (no extra fetch needed)
+  // ---------------------------------------------------------------------------
+  const completedCount = analyses.filter((a) => a.status === "completed").length;
+  const inProgressCount = analyses.filter(
+    (a) => a.status === "pending" || a.status === "running"
+  ).length;
+  const hasRunning = inProgressCount > 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   if (isLoading) return null;
 
   return (
     <div className="min-h-screen bg-[#0c0c0c]">
+      {/* Inject keyframe animations once */}
+      <style>{`
+        @keyframes dashboard-fadein {
+          from { opacity: 0; transform: translateY(4px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes dashboard-pulse {
+          0%, 100% { opacity: 1; }
+          50%       { opacity: 0.3; }
+        }
+      `}</style>
+
       <Navbar />
       <main className="mx-auto max-w-5xl px-4 py-8 space-y-8">
 
@@ -198,7 +490,53 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* New analysis */}
+        {/* ------------------------------------------------------------------ */}
+        {/* Overview section                                                    */}
+        {/* ------------------------------------------------------------------ */}
+        <section className="space-y-5">
+          <h2 className="text-base font-semibold text-white">Overview</h2>
+
+          {/* --- Stat cards --- */}
+          <div className="grid grid-cols-3 gap-3">
+            <StatCard
+              label="Totale analisi"
+              value={total}
+              accent="#3ecf8e"
+            />
+            <StatCard
+              label="Completate"
+              value={completedCount}
+              accent="#3ecf8e"
+            />
+            <StatCard
+              label="In corso"
+              value={inProgressCount}
+              accent={inProgressCount > 0 ? "#60a5fa" : "#71717a"}
+              pulse={inProgressCount > 0}
+            />
+          </div>
+
+          {/* --- Verdict bar chart + live feed (side by side when both present) --- */}
+          {(analyses.some((a) => a.status === "completed" && a.verdict?.label) || hasRunning) && (
+            <div className="flex flex-wrap gap-4">
+              {/* Verdict distribution chart */}
+              <div className="rounded-xl bg-[#1a1a1a] border border-white/10 p-5 flex-1 min-w-[200px]">
+                <VerdictBarChart analyses={analyses} />
+              </div>
+
+              {/* Live activity feed — only when there are running/pending analyses */}
+              {hasRunning && (
+                <div className="rounded-xl bg-[#1a1a1a] border border-white/10 p-5 flex-1 min-w-[240px]">
+                  <LiveFeed feed={feed} />
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* ------------------------------------------------------------------ */}
+        {/* New analysis                                                        */}
+        {/* ------------------------------------------------------------------ */}
         <section className={`rounded-xl bg-[#1a1a1a] border border-white/10 p-6 ${user?.is_disabled ? "opacity-50 pointer-events-none select-none" : ""}`}>
           <h2 className="text-base font-semibold text-white mb-4">Fact-check a claim</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -327,36 +665,61 @@ export default function DashboardPage() {
         {/* History */}
         <section>
           <h2 className="text-base font-semibold text-white mb-3">
-            History{total > 0 && <span className="text-zinc-500 font-normal text-sm ml-2">({total})</span>}
+            History{total > 0 && <span className="text-zinc-500 font-normal text-sm ml-2">({total} analisi)</span>}
           </h2>
           {fetching ? (
             <div className="flex justify-center py-12"><Loader2 className="animate-spin text-zinc-600" /></div>
           ) : analyses.length === 0 ? (
             <p className="text-center py-12 text-zinc-600 text-sm">No analyses yet. Submit your first claim above.</p>
           ) : (
-            <div className="space-y-2">
-              {analyses.map((a) => (
-                <div key={a.id}
-                  className="flex items-center gap-3 rounded-xl bg-[#1a1a1a] border border-white/10 px-5 py-3.5 hover:bg-white/5 transition-colors cursor-pointer"
-                  onClick={() => router.push(`/analysis/${a.id}`)}>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white truncate">{a.claim}</p>
-                    <p className="text-xs text-zinc-500 mt-0.5">
-                      {new Date(a.created_at).toLocaleString()} · {a.llm_provider} · {a.llm_model}
-                    </p>
+            <>
+              <div className="space-y-2">
+                {analyses.map((a) => (
+                  <div key={a.id}
+                    className="flex items-center gap-3 rounded-xl bg-[#1a1a1a] border border-white/10 px-5 py-3.5 hover:bg-white/5 transition-colors cursor-pointer"
+                    onClick={() => router.push(`/analysis/${a.id}`)}>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-white truncate">{a.claim}</p>
+                      <p className="text-xs text-zinc-500 mt-0.5">
+                        {new Date(a.created_at).toLocaleString()} · {a.llm_provider} · {a.llm_model}
+                      </p>
+                    </div>
+                    <div className="shrink-0 flex items-center gap-2">
+                      {a.verdict
+                        ? <VerdictBadge label={a.verdict.label} confidence={a.verdict.confidence} size="sm" />
+                        : <StatusPill status={a.status} />}
+                      <button onClick={(e) => { e.stopPropagation(); handleDelete(a.id); }}
+                        className="p-1 text-zinc-600 hover:text-red-400 transition-colors">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
-                  <div className="shrink-0 flex items-center gap-2">
-                    {a.verdict
-                      ? <VerdictBadge label={a.verdict.label} confidence={a.verdict.confidence} size="sm" />
-                      : <StatusPill status={a.status} />}
-                    <button onClick={(e) => { e.stopPropagation(); handleDelete(a.id); }}
-                      className="p-1 text-zinc-600 hover:text-red-400 transition-colors">
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
+                ))}
+              </div>
+
+              {/* Pagination controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-3 mt-4">
+                  <button
+                    onClick={() => setPage((p) => p - 1)}
+                    disabled={page === 1}
+                    className="rounded-xl bg-[#1a1a1a] border border-white/10 px-3 py-1.5 text-sm text-zinc-300 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    ← Precedente
+                  </button>
+                  <span className="text-sm text-zinc-500">
+                    Pagina {page} di {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setPage((p) => p + 1)}
+                    disabled={page === totalPages}
+                    className="rounded-xl bg-[#1a1a1a] border border-white/10 px-3 py-1.5 text-sm text-zinc-300 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Successivo →
+                  </button>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </section>
       </main>
@@ -364,6 +727,47 @@ export default function DashboardPage() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// StatCard sub-component
+// ---------------------------------------------------------------------------
+function StatCard({
+  label,
+  value,
+  accent,
+  pulse = false,
+}: {
+  label: string;
+  value: number;
+  accent: string;
+  pulse?: boolean;
+}) {
+  return (
+    <div className="rounded-xl bg-[#1a1a1a] border border-white/10 px-5 py-4 flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        {pulse && (
+          <span
+            className="inline-block w-2 h-2 rounded-full shrink-0"
+            style={{
+              background: accent,
+              animation: "dashboard-pulse 1.4s ease-in-out infinite",
+            }}
+          />
+        )}
+        <span className="text-xs text-zinc-500 font-medium truncate">{label}</span>
+      </div>
+      <span
+        className="text-3xl font-bold tabular-nums leading-none"
+        style={{ color: accent }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// StatusPill sub-component
+// ---------------------------------------------------------------------------
 function StatusPill({ status }: { status: string }) {
   const styles: Record<string, string> = {
     pending:   "bg-white/10 text-zinc-400 border border-white/10",
@@ -371,8 +775,10 @@ function StatusPill({ status }: { status: string }) {
     completed: "bg-[#3ecf8e]/15 text-[#3ecf8e] border border-[#3ecf8e]/30",
     failed:    "bg-red-500/15 text-red-400 border border-red-500/30",
   };
+  const spinning = status === "running" || status === "pending";
   return (
-    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${styles[status] ?? styles.pending}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${styles[status] ?? styles.pending}`}>
+      {spinning && <Loader2 size={11} className="animate-spin" />}
       {status}
     </span>
   );

@@ -1,28 +1,88 @@
-services:
-  api:
-    build: .
-    ports:
-      - "8000:8000"
-    env_file: .env
-    depends_on:
-      db:
-        condition: service_healthy
+# FakeNews Tribunal — docker-compose.yml
+# Tested with Docker Compose v2 (plugin syntax).
+#
+# Quick start:
+#   1. cp .env.example .env  — fill in your secrets
+#   2. docker compose up -d
+#   3. docker compose exec api alembic upgrade head   — first run only
 
+networks:
+  tribunal-net:
+    driver: bridge
+
+volumes:
+  pgdata:       # persistent PostgreSQL data
+
+
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
   db:
-    image: postgres:16
+    image: postgres:16-alpine
+    restart: unless-stopped
+    networks:
+      - tribunal-net
     ports:
-      - "5432:5432"
+      - "5432:5432"           # expose to host for local psql / migrations
     environment:
-      POSTGRES_USER: tribunal
-      POSTGRES_PASSWORD: tribunal
-      POSTGRES_DB: tribunal
+      POSTGRES_USER: ${POSTGRES_USER:-tribunal}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tribunal}
+      POSTGRES_DB: ${POSTGRES_DB:-tribunal}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tribunal"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tribunal}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 10s
 
-volumes:
-  pgdata:
+
+  # ── FastAPI backend ────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks:
+      - tribunal-net
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Override DB host so the API reaches the db container, not localhost.
+      # Constructed from the same POSTGRES_* variables used by the db service.
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-tribunal}:${POSTGRES_PASSWORD:-tribunal}@db:5432/${POSTGRES_DB:-tribunal}"
+      # Allow the web container to reach the API
+      CORS_ORIGINS: '["http://localhost:3000","http://web:3000"]'
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+
+  # ── Next.js Web UI ─────────────────────────────────────────────────────────
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        # Baked into the Next.js bundle at build time.
+        # In production point this to the public API hostname/IP.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    restart: unless-stopped
+    networks:
+      - tribunal-net
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    depends_on:
+      api:
+        condition: service_healthy

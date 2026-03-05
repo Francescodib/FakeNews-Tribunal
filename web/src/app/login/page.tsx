@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertCircle, Scale, WifiOff } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { ApiError, checkHealth } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 
 const inputCls = "w-full rounded-xl bg-[#1a1a1a] border border-white/10 px-4 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-[#3ecf8e]/50 focus:border-[#3ecf8e]/50 transition-colors";
 
@@ -58,19 +58,11 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<FormError | null>(null);
-  const [stage, setStage] = useState<"checking" | "submitting" | null>(null);
+  const [stage, setStage] = useState<"submitting" | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setStage("checking");
-    try {
-      await checkHealth();
-    } catch {
-      setError({ kind: "network", message: "API server is not running — start it first" });
-      setStage(null);
-      return;
-    }
     setStage("submitting");
     try {
       await login(email, password);
@@ -127,7 +119,7 @@ export default function LoginPage() {
             {stage ? (
               <span className="flex items-center justify-center gap-2">
                 <span className="inline-block w-3.5 h-3.5 border-2 border-black/30 border-t-black rounded-full animate-spin" />
-                {stage === "checking" ? "Checking server…" : "Signing in…"}
+                Signing in…
               </span>
             ) : "Sign in"}
           </button>

@@ -10,7 +10,7 @@ from api.middleware.auth_middleware import (
     refresh_token_expiry,
     verify_password,
 )
-from api.models.schemas import LoginRequest, LogoutRequest, MeResponse, RefreshRequest, RegisterRequest, TokenResponse
+from api.models.schemas import LoginRequest, LogoutRequest, MeResponse, MeUpdateRequest, RefreshRequest, RegisterRequest, TokenResponse
 from db.models import User
 from db.repository import (
     create_refresh_token,
@@ -18,6 +18,7 @@ from db.repository import (
     delete_refresh_token,
     get_refresh_token_by_hash,
     get_user_by_email,
+    update_user,
 )
 from db.session import get_db
 
@@ -74,4 +75,32 @@ async def me(user: User = Depends(get_current_user)):
         email=user.email,
         is_admin=user.is_admin,
         is_disabled=user.is_disabled,
+    )
+
+
+@router.patch("/me", response_model=MeResponse)
+async def update_me(
+    body: MeUpdateRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if body.email is not None and body.email != user.email:
+        existing = await get_user_by_email(db, body.email)
+        if existing:
+            raise HTTPException(status.HTTP_409_CONFLICT, detail="Email already in use")
+
+    new_hashed_pw = None
+    if body.new_password is not None:
+        if not body.current_password:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="current_password required to set a new password")
+        if not verify_password(body.current_password, user.hashed_pw):
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Current password is incorrect")
+        new_hashed_pw = hash_password(body.new_password)
+
+    updated = await update_user(db, user, email=body.email, hashed_pw=new_hashed_pw)
+    return MeResponse(
+        id=updated.id,
+        email=updated.email,
+        is_admin=updated.is_admin,
+        is_disabled=updated.is_disabled,
     )

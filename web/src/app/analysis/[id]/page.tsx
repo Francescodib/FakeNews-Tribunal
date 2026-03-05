@@ -28,6 +28,8 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
   const [done, setDone] = useState(false);
   const [disconnected, setDisconnected] = useState(false);
   const [resuming, setResuming] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const autoRetriedRef = useRef(false);
   const resumeFailRef = useRef(0);
@@ -43,9 +45,42 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
     return () => abortRef.current?.abort();
   }, [isAuthenticated, id]);
 
+  // Reconnect stream when tab becomes visible and analysis is still running
+  useEffect(() => {
+    if (!isAuthenticated || !id) return;
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      if (done) return;
+      // Abort any stale stream, then refresh state and reconnect
+      abortRef.current?.abort();
+      getAnalysis(id).then((a) => {
+        setAnalysis(a);
+        if (a.debate?.length > 0) setStreamEvents(buildEventsFromRounds(a));
+        if (a.status === "completed" || a.status === "failed") { setDone(true); return; }
+        startStream(id);
+      }).catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [isAuthenticated, id, done]);
+
+  function buildEventsFromRounds(a: Analysis): StreamEvent[] {
+    const events: StreamEvent[] = [];
+    for (const rnd of (a.debate as DebateRound[])) {
+      events.push({ event: "round_start", label: `Round ${rnd.round_number}` });
+      events.push({ event: "researcher_done", label: "Researcher done", detail: `${rnd.researcher_sources?.length ?? 0} sources` });
+      events.push({ event: "advocate_done", label: "Devil's Advocate done", detail: `${rnd.advocate_counter_sources?.length ?? 0} sources` });
+      if (rnd.judge_continuation_reason) {
+        events.push({ event: "judge_continue", label: "Judge → another round", detail: rnd.judge_continuation_reason.slice(0, 100) });
+      }
+    }
+    return events;
+  }
+
   async function loadAnalysis() {
     const a = await getAnalysis(id);
     setAnalysis(a);
+    if (a.debate?.length > 0) setStreamEvents(buildEventsFromRounds(a));
     if (a.status === "completed" || a.status === "failed") { setDone(true); return; }
     startStream(id);
   }
@@ -128,16 +163,34 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
   }
 
   async function downloadPdf() {
-    const token = getAccessToken();
-    const res = await fetch(`${API}/api/v1/analysis/${id}/export`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) return;
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `verdict_${id}.pdf`; a.click();
-    URL.revokeObjectURL(url);
+    setDownloading(true);
+    setDownloadError(null);
+    try {
+      const token = getAccessToken();
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 60_000);
+      const res = await fetch(`${API}/api/v1/analysis/${id}/export`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) {
+        setDownloadError(`Errore server (${res.status})`);
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `verdict_${id}.pdf`; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      const msg = e instanceof DOMException && e.name === "AbortError"
+        ? "Timeout: generazione PDF troppo lenta"
+        : "Errore di rete durante il download";
+      setDownloadError(msg);
+    } finally {
+      setDownloading(false);
+    }
   }
 
   if (isLoading || !analysis) {
@@ -167,11 +220,14 @@ export default function AnalysisPage({ params }: { params: Promise<{ id: string 
             </h1>
           </div>
           {done && verdict && (
-            <button onClick={downloadPdf}
-              className="shrink-0 flex items-center gap-1.5 rounded-xl bg-[#1a1a1a] border border-white/10 px-3 py-2 text-sm text-zinc-300 hover:bg-white/10 hover:text-white transition-colors">
-              <Download size={15} />
-              PDF
-            </button>
+            <div className="flex flex-col items-end gap-1">
+              <button onClick={downloadPdf} disabled={downloading}
+                className="shrink-0 flex items-center gap-1.5 rounded-xl bg-[#1a1a1a] border border-white/10 px-3 py-2 text-sm text-zinc-300 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                {downloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                PDF
+              </button>
+              {downloadError && <p className="text-xs text-red-400">{downloadError}</p>}
+            </div>
           )}
         </div>
 

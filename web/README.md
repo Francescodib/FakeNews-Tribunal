@@ -1,36 +1,49 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# FakeNews Tribunal — Web UI
 
-## Getting Started
+Next.js 16 frontend for the FakeNews Tribunal fact-checking platform.
 
-First, run the development server:
+## Stack
+
+- **Next.js 16** — App Router
+- **React 19**
+- **Tailwind CSS 4** — CSS-based configuration (no `tailwind.config.ts`)
+- **TypeScript**
+
+## Development
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Requires the API running at `http://localhost:8000` (configurable via `NEXT_PUBLIC_API_URL`).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Environment
 
-## Learn More
+```bash
+# .env.local (optional — defaults to http://localhost:8000)
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Pages
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Route | Description |
+|---|---|
+| `/` | Redirect to `/dashboard` or `/login` |
+| `/login` | Login form |
+| `/register` | Registration form |
+| `/dashboard` | Stat overview, claim submission, paginated history |
+| `/analysis/[id]` | Live SSE stream + verdict display + PDF export |
+| `/batch` | Batch submissions with live polling |
+| `/profile` | Change email / password |
+| `/admin/users` | User management (admin only) |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Production build (Docker)
 
-## Deploy on Vercel
+Built via `web/Dockerfile` with Next.js standalone output. See root `docker-compose.yml`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+docker compose up web -d
+```

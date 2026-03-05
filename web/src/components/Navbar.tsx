@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LogOut, Scale, Shield, Webhook } from "lucide-react";
+import { List, LogOut, Scale, Shield, User, Webhook } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 
 export default function Navbar() {
-  const { logout, user } = useAuth();
+  const { logout, user, isAuthenticated } = useAuth();
   const router = useRouter();
 
   async function handleLogout() {
@@ -22,13 +22,24 @@ export default function Navbar() {
           FakeNews Tribunal
         </Link>
         <div className="flex items-center gap-4">
-          <Link
-            href="/webhooks"
-            className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
-          >
-            <Webhook size={14} />
-            Webhooks
-          </Link>
+          {isAuthenticated && (
+            <Link
+              href="/batch"
+              className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
+            >
+              <List size={14} />
+              Batch
+            </Link>
+          )}
+          {isAuthenticated && (
+            <Link
+              href="/webhooks"
+              className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
+            >
+              <Webhook size={14} />
+              Webhooks
+            </Link>
+          )}
           {user?.is_admin && (
             <Link
               href="/admin/users"
@@ -36,6 +47,15 @@ export default function Navbar() {
             >
               <Shield size={14} />
               Admin
+            </Link>
+          )}
+          {isAuthenticated && (
+            <Link
+              href="/profile"
+              className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
+            >
+              <User size={14} />
+              Profilo
             </Link>
           )}
           <button

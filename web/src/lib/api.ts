@@ -224,7 +224,7 @@ export async function getConfig(): Promise<{ default_provider: string }> {
 }
 
 export async function checkHealth(): Promise<void> {
-  await apiFetch<{ status: string }>("/api/v1/health", {}, false, 3_000);
+  await apiFetch<{ status: string }>("/api/v1/health", {}, false, 45_000);
 }
 
 export async function getOllamaModels(): Promise<string[]> {
@@ -245,6 +245,25 @@ export interface Me {
 
 export async function getMe(): Promise<Me> {
   return apiFetch<Me>("/api/v1/auth/me");
+}
+
+/**
+ * Update the current user's own profile (email and/or password).
+ *
+ * NOTE: The backend endpoint PATCH /api/v1/auth/me does not exist yet in v0.4.
+ * It needs to be created in api/routers/auth.py, accepting a JSON body with
+ * optional fields { email?: str, current_password?: str, new_password?: str }
+ * and returning the updated Me object.  Add the route before shipping this UI.
+ */
+export async function updateMe(body: {
+  email?: string;
+  current_password?: string;
+  new_password?: string;
+}): Promise<Me> {
+  return apiFetch<Me>("/api/v1/auth/me", {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
 }
 
 // ---------------------------------------------------------------------------

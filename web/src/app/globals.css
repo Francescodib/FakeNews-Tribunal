@@ -1,6 +1,16 @@
 @import "tailwindcss";
 
+/* Override browser autofill background */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0px 1000px #1a1a1a inset !important;
+  -webkit-text-fill-color: #ffffff !important;
+  caret-color: #ffffff;
+}
+
 :root {
+  color-scheme: dark;
   --background: #f1f5f9;
   --foreground: #0f172a;
 }

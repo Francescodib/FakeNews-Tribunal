@@ -144,6 +144,12 @@ class MeResponse(BaseModel):
     is_disabled: bool
 
 
+class MeUpdateRequest(BaseModel):
+    email: str | None = Field(default=None, pattern=r"^[^@]+@[^@]+\.[^@]+$")
+    current_password: str | None = None
+    new_password: str | None = Field(default=None, min_length=8)
+
+
 # --- Webhook ---
 
 class WebhookCreate(BaseModel):

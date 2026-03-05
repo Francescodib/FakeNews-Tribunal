@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Check,
@@ -278,9 +278,8 @@ export default function AdminUsersPage() {
               </thead>
               <tbody className="divide-y divide-white/5">
                 {users.map((u) => (
-                  <>
+                  <Fragment key={u.id}>
                     <tr
-                      key={u.id}
                       className={`transition-colors ${u.is_disabled ? "bg-red-950/10" : "bg-[#0c0c0c] hover:bg-[#111]"}`}
                     >
                       <td className="px-4 py-3.5">
@@ -363,7 +362,7 @@ export default function AdminUsersPage() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </tbody>
             </table>

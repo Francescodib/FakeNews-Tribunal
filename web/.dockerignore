@@ -1,0 +1,27 @@
+# Dependencies — installed fresh inside the image
+node_modules/
+
+# Next.js build output — produced inside the image
+.next/
+out/
+
+# Secrets
+.env
+.env.local
+.env.*.local
+!.env.local.example
+
+# Editor / OS artefacts
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Docker files themselves
+Dockerfile
+.dockerignore
+
+# Type-check / lint caches
+.eslintcache
+*.tsbuildinfo

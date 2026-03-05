@@ -1,3 +1,10 @@
+"""
+Unit tests for auth endpoints — patches repository functions directly so no
+real database is needed.  The startup DB-reachability check is suppressed for
+speed (it would connect to the test SQLite DB but would still take a round-trip
+through the startup_checks code).
+"""
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from unittest.mock import AsyncMock, patch
@@ -5,15 +12,19 @@ from unittest.mock import AsyncMock, patch
 from api.main import app
 
 
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
-
-
-@pytest.fixture
+@pytest.fixture()
 async def client():
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        yield ac
+    """
+    Yield an httpx AsyncClient wired to the FastAPI app.
+
+    run_startup_checks is patched to a no-op so that tests do not incur the
+    SQLite startup check delay and do not need Alembic tables to exist.
+    """
+    with patch("api.main.run_startup_checks", new=AsyncMock()):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as ac:
+            yield ac
 
 
 @pytest.mark.asyncio
